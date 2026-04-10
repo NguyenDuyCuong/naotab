@@ -1,4 +1,4 @@
-# 🗂️ Tab Explorer
+# 🗂️ naoTab
 
 > Turn your browser tabs into a personal knowledge base — with context, tags, AI summaries, and a visual network graph.
 
@@ -10,7 +10,7 @@ Chrome Extension (Manifest V3) built for developers who open too many tabs and f
 
 You open a GitHub repo, an article, a Stack Overflow answer. You *know* it's useful. You bookmark it. Three weeks later you open the bookmark — just a title, no context, no memory of why you saved it. Sound familiar?
 
-**Tab Explorer** solves this by letting you save tabs *with context*: why you saved it, a summary of what it is, and tags so you can find it later. Everything is organized in a knowledge base you can search, filter, and visualize as a network graph.
+**naoTab** solves this by letting you save tabs *with context*: why you saved it, a summary of what it is, and tags so you can find it later. Everything is organized in a knowledge base you can search, filter, and visualize as a network graph.
 
 ---
 

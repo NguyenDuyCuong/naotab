@@ -1,4 +1,4 @@
-# Tab Explorer — Chrome Extension
+# naoTab — Chrome Extension
 
 ## Tổng quan dự án
 
