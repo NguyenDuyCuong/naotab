@@ -364,6 +364,23 @@ function closeModal() {
   modalTab = null;
 }
 
+// ─── Save current tab ─────────────────────────────────────────────────────────
+
+document.getElementById('btn-save-current').addEventListener('click', async () => {
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!activeTab) { showToast('⚠️ Không tìm thấy tab hiện tại'); return; }
+  if (savedUrls.has(activeTab.url)) { showToast('⚠️ Tab này đã được lưu rồi!'); return; }
+  const tab = allTabs.find(t => t.id === activeTab.id) || {
+    id: activeTab.id,
+    windowId: activeTab.windowId,
+    title: activeTab.title || '(Không có tiêu đề)',
+    url: activeTab.url || '',
+    favIconUrl: activeTab.favIconUrl || '',
+    active: true,
+  };
+  openSaveModal(tab);
+});
+
 // ─── Open Knowledge Base ──────────────────────────────────────────────────────
 
 document.getElementById('btn-open-kb').addEventListener('click', () => {
