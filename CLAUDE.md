@@ -112,7 +112,7 @@ Global functions:
 State: `allBookmarks`, `activeTag`, `excludedTags` (Set), `searchQuery`, `currentView` (default: `'graph'`), `editingId`, `panelId`
 
 Key features:
-- **Graph view** (default): D3 force simulation, single-click → node panel + highlight connected nodes, double-click → open URL, click background → reset
+- **Graph view** (default): D3 force simulation, single-click → node panel + highlight connected nodes, double-click → open URL, click background → reset. Node color: blue (has summary) vs grey (no summary)
 - **List view**: card per bookmark, click card → node panel (links/buttons still work normally)
 - **Node panel**: slide-in right panel with full details, editable fields, AI Suggest button (shown only when AI enabled), save/delete/open-url actions
 - **Exclude tags**: tag pills in sidebar have `✕` button on hover → excluded tags shown as strikethrough red, not used for graph edges

@@ -9,7 +9,7 @@ A Chrome Extension (Manifest V3) that turns your browser tabs into an organized,
 ## ✨ Features
 
 - **Save tabs with context** — add a summary, reason for saving, and tags to any tab
-- **Brain Visualize** — D3.js force-directed graph; nodes = bookmarks, edges = shared tags
+- **Brain Visualize** — D3.js force-directed graph; nodes = bookmarks, edges = shared tags; blue node = has summary, grey = no summary
 - **List view** — searchable card list with full-text search across title, URL, reason, and tags
 - **Node panel** — click any node or card to open a side panel with full details and inline editing
 - **Exclude tags from graph** — temporarily hide a tag's connections without deleting it, to declutter the graph
@@ -46,7 +46,8 @@ Fill in summary (optional), reason (optional), and tags. If AI is enabled, click
 
 ### Brain Visualize (Graph view)
 - Default view when opening the Knowledge Base
-- **Click a node** → side panel opens; connected nodes highlight blue, others dim
+- 🔵 **Blue node** = has summary (AI or manual) · ⚪ **Grey node** = no summary yet
+- **Click a node** → side panel opens; connected nodes highlight, others dim
 - **Double-click a node** → opens the URL in a new tab
 - **Click the background** → reset highlights, close panel
 - **Drag nodes** to rearrange the layout

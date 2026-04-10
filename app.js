@@ -210,10 +210,10 @@ function renderGraph(bookmarks) {
 
   node.append('circle')
     .attr('r', 18)
-    .attr('fill', '#1a73e8')
-    .attr('fill-opacity', 0.15)
-    .attr('stroke', '#1a73e8')
-    .attr('stroke-width', 2);
+    .attr('fill', d => d.summary ? '#1a73e8' : '#9aa0a6')
+    .attr('fill-opacity', d => d.summary ? 0.25 : 0.08)
+    .attr('stroke', d => d.summary ? '#1a73e8' : '#bdc1c6')
+    .attr('stroke-width', d => d.summary ? 2.5 : 1.5);
 
   node.append('text')
     .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
@@ -253,8 +253,8 @@ function renderGraph(bookmarks) {
       // Highlight: dim nodes/links không liên quan, highlight những cái liên quan
       const neighbors = neighborMap[d.id] || new Set();
       node.selectAll('circle')
-        .attr('fill-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 0.9 : 0.06)
-        .attr('stroke-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.2);
+        .attr('fill-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? (n.summary ? 0.85 : 0.35) : 0.04)
+        .attr('stroke-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.15);
       node.selectAll('text')
         .attr('opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.2);
       link
@@ -267,7 +267,11 @@ function renderGraph(bookmarks) {
 
   // Click nền SVG → reset highlight
   svg.on('click', () => {
-    node.selectAll('circle').attr('fill-opacity', 0.15).attr('stroke-opacity', 1);
+    node.selectAll('circle')
+      .attr('fill-opacity', n => n.summary ? 0.25 : 0.08)
+      .attr('stroke-opacity', 1)
+      .attr('stroke', n => n.summary ? '#1a73e8' : '#bdc1c6')
+      .attr('stroke-width', n => n.summary ? 2.5 : 1.5);
     node.selectAll('text').attr('opacity', 1);
     link.attr('stroke-opacity', 0.6).attr('stroke', '#dadce0').attr('stroke-width', 1.5);
     closeNodePanel();

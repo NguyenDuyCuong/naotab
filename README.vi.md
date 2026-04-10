@@ -9,7 +9,7 @@ Chrome Extension (Manifest V3) biến các tab trình duyệt thành một **kho
 ## ✨ Tính năng
 
 - **Lưu tab kèm context** — thêm summary, lý do lưu và tags cho bất kỳ tab nào
-- **Brain Visualize** — đồ thị lực D3.js; node = bookmark, cạnh nối = tags chung
+- **Brain Visualize** — đồ thị lực D3.js; node = bookmark, cạnh nối = tags chung; node xanh = có summary, xám = chưa có
 - **List view** — danh sách card có tìm kiếm toàn văn theo title, URL, lý do và tags
 - **Node panel** — click bất kỳ node hoặc card để mở panel chi tiết với form chỉnh sửa inline
 - **Loại trừ tag khỏi đồ thị** — ẩn tạm kết nối của một tag mà không xóa, giúp dọn dẹp đồ thị
@@ -46,7 +46,8 @@ Chrome Extension (Manifest V3) biến các tab trình duyệt thành một **kho
 
 ### Brain Visualize (Graph view)
 - View mặc định khi mở Knowledge Base
-- **Click node** → panel bên phải mở ra; node kết nối highlight xanh, node còn lại mờ đi
+- 🔵 **Node xanh** = đã có summary (AI hoặc tự nhập) · ⚪ **Node xám** = chưa có summary
+- **Click node** → panel bên phải mở ra; node kết nối highlight, node còn lại mờ đi
 - **Double-click node** → mở URL trong tab mới
 - **Click nền** → reset highlight, đóng panel
 - **Kéo node** để sắp xếp lại layout
