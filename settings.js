@@ -18,7 +18,7 @@ async function loadSettings() {
   document.getElementById('feat-tags').checked = settings.featTags !== false;
   document.getElementById('feat-summary').checked = settings.featSummary !== false;
 
-  // Mark preset button active nếu URL khớp
+  // Mark preset button active if URL matches
   const currentUrl = settings.aiBaseUrl || '';
   document.querySelectorAll('.preset-btn').forEach(btn => {
     const p = PRESETS[btn.dataset.provider];
@@ -41,7 +41,7 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const p = PRESETS[btn.dataset.provider];
     if (!p) return;
-    // Custom: chỉ clear field để người dùng tự điền, không overwrite
+    // Custom: clear fields so user can type their own, do not overwrite
     if (btn.dataset.provider !== 'custom') {
       document.getElementById('ai-base-url').value = p.url;
       document.getElementById('ai-model').value = p.model;
@@ -64,13 +64,13 @@ document.getElementById('btn-test').addEventListener('click', async () => {
   const model = document.getElementById('ai-model').value.trim();
 
   if (!baseUrl || !model) {
-    resultEl.textContent = '⚠️ Điền URL và Model trước';
+    resultEl.textContent = '⚠️ Please fill in URL and Model first';
     resultEl.className = 'test-err';
     return;
   }
 
   btn.disabled = true;
-  resultEl.textContent = '⏳ Đang kiểm tra...';
+  resultEl.textContent = '⏳ Testing...';
   resultEl.className = '';
 
   try {
@@ -83,7 +83,7 @@ document.getElementById('btn-test').addEventListener('click', async () => {
     } else {
       headers['Authorization'] = 'Bearer ' + apiKey;
     }
-    // OpenRouter yêu cầu thêm 2 header này
+    // OpenRouter requires these 2 extra headers
     if (isOpenRouter) {
       headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
       headers['X-Title'] = 'naoTab';
@@ -102,7 +102,7 @@ document.getElementById('btn-test').addEventListener('click', async () => {
     });
 
     if (res.ok) {
-      resultEl.textContent = '✅ Kết nối thành công!';
+      resultEl.textContent = '✅ Connection successful!';
       resultEl.className = 'test-ok';
     } else {
       const err = await res.json().catch(() => ({}));
@@ -129,7 +129,7 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   };
   await saveSettings(newSettings);
   settings = newSettings;
-  showToast('✅ Đã lưu settings!');
+  showToast('✅ Settings saved!');
 });
 
 document.getElementById('btn-back').addEventListener('click', (e) => {

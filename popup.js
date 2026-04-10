@@ -1,7 +1,7 @@
 let allTabs = [];
-let savedUrls = new Set(); // để biết tab nào đã lưu rồi
-let modalTab = null;       // tab đang được save
-let modalPageContent = ''; // nội dung trang đã clip được
+let savedUrls = new Set(); // track saved URLs
+let modalTab = null;     // tab currently being saved
+let modalPageMeta = {};  // page meta tags read from tab
 
 // ─── Load tabs ───────────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ async function loadTabs() {
   allTabs = tabs.map(tab => ({
     id: tab.id,
     windowId: tab.windowId,
-    title: tab.title || '(Không có tiêu đề)',
+    title: tab.title || '(No title)',
     url: tab.url || '',
     favIconUrl: tab.favIconUrl || '',
     active: tab.active,
@@ -44,7 +44,7 @@ function renderTabs(tabs) {
   const list = document.getElementById('tab-list');
 
   if (tabs.length === 0) {
-    list.innerHTML = `<div class="empty">Không tìm thấy tab nào</div>`;
+    list.innerHTML = `<div class="empty">No tabs found</div>`;
     return;
   }
 
@@ -61,10 +61,10 @@ function renderTabs(tabs) {
     const wIdx = windowIndex++;
     html += `<div class="window-group">
       <div class="window-header">
-        🪟 Cửa sổ ${wIdx} <span class="window-count">${windowTabs.length} tab</span>
+        🪟 Window ${wIdx} <span class="window-count">${windowTabs.length} tab</span>
         <div class="window-header-actions">
-          <button class="btn-window-save" data-windowid="${windowId}" title="Lưu tất cả tab trong cửa sổ này">💾 Lưu cả window</button>
-          <button class="btn-window-close" data-windowid="${windowId}" title="Đóng cả cửa sổ này">✕ Đóng window</button>
+          <button class="btn-window-save" data-windowid="${windowId}" title="Save all tabs in this window">💾 Save window</button>
+          <button class="btn-window-close" data-windowid="${windowId}" title="Close this window">✕ Close window</button>
         </div>
       </div>`;
 
@@ -82,12 +82,12 @@ function renderTabs(tabs) {
           </div>
           <div class="tab-actions">
             ${isSaved
-              ? `<button class="btn-saved" disabled title="Đã lưu vào Knowledge Base">✅</button>`
-              : `<button class="btn-save-tab" data-id="${tab.id}" title="Lưu vào Knowledge Base">💾</button>`
+              ? `<button class="btn-saved" disabled title="Already saved">✅</button>`
+              : `<button class="btn-save-tab" data-id="${tab.id}" title="Save to Knowledge Base">💾</button>`
             }
             <button class="btn-copy-tab" data-title="${titleEscaped}" data-url="${urlEscaped}" title="Copy URL">📋</button>
-            <button class="btn-goto-tab" data-id="${tab.id}" data-windowid="${tab.windowId}" title="Chuyển sang tab này">↗</button>
-            <button class="btn-close-tab" data-id="${tab.id}" title="Đóng tab này">✕</button>
+            <button class="btn-goto-tab" data-id="${tab.id}" data-windowid="${tab.windowId}" title="Switch to this tab">↗</button>
+            <button class="btn-close-tab" data-id="${tab.id}" title="Close tab">✕</button>
           </div>
         </div>`;
     });
@@ -97,23 +97,38 @@ function renderTabs(tabs) {
 
   list.innerHTML = html;
 
-  // Save cả window
+  // Save whole window
   list.querySelectorAll('.btn-window-save').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const wid = parseInt(btn.dataset.windowid);
       const windowTabs = allTabs.filter(t => t.windowId === wid && !savedUrls.has(t.url));
-      if (windowTabs.length === 0) { showToast('⚠️ Tất cả tab đã được lưu rồi!'); return; }
+      if (windowTabs.length === 0) { showToast('⚠️ All tabs already saved!'); return; }
+      btn.textContent = `⏳ 0/${windowTabs.length}`;
+      btn.disabled = true;
+      let count = 0;
       for (const tab of windowTabs) {
-        await saveBookmark({ url: tab.url, title: tab.title, reason: '', tags: suggestTags(tab.title, tab.url), favIconUrl: tab.favIconUrl });
+        const meta = await getPageMeta(tab.id);
+        await saveBookmark({
+          url: tab.url,
+          title: tab.title,
+          reason: '',
+          tags: suggestTags(tab.title, tab.url),
+          favIconUrl: tab.favIconUrl,
+          pageMeta: meta._aiText ? meta : undefined,
+        });
         savedUrls.add(tab.url);
+        count++;
+        btn.textContent = `⏳ ${count}/${windowTabs.length}`;
       }
-      showToast(`✅ Đã lưu ${windowTabs.length} tab!`);
+      btn.textContent = '💾 Save window';
+      btn.disabled = false;
+      showToast(`✅ Saved ${windowTabs.length} tabs!`);
       renderTabs(allTabs);
     });
   });
 
-  // Đóng cả window
+  // Close whole window
   list.querySelectorAll('.btn-window-close').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -125,7 +140,7 @@ function renderTabs(tabs) {
     });
   });
 
-  // Đóng từng tab
+  // Close single tab
   list.querySelectorAll('.btn-close-tab').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -137,7 +152,7 @@ function renderTabs(tabs) {
     });
   });
 
-  // Gắn events
+  // Bind events
   list.querySelectorAll('.btn-save-tab').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -196,15 +211,15 @@ document.getElementById('btn-export-csv').addEventListener('click', () => {
   });
   const csv = rows.map(r => r.join(',')).join('\n');
   downloadText('\uFEFF' + csv, `tabs_${today()}.csv`, 'text/csv');
-  showToast('✅ Đã xuất CSV!');
+  showToast('✅ CSV exported!');
 });
 
 // ─── Save Modal ───────────────────────────────────────────────────────────────
 
 let selectedTags = [];
 
-// Đọc meta tags SEO từ trang — tiết kiệm token hơn body text rất nhiều
-async function getPageContent(tabId) {
+// Read SEO meta tags — returns object with AI string and raw fields to store
+async function getPageMeta(tabId) {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
@@ -219,47 +234,48 @@ async function getPageContent(tabId) {
         };
 
         const title = document.title || '';
-        const description = getMeta([
-          'meta[name="description"]',
-          'meta[property="og:description"]',
-          'meta[name="twitter:description"]',
-        ]);
+        const description = getMeta(['meta[name="description"]', 'meta[property="og:description"]', 'meta[name="twitter:description"]']);
         const ogTitle = getMeta(['meta[property="og:title"]', 'meta[name="twitter:title"]']);
         const keywords = getMeta(['meta[name="keywords"]']);
         const ogType = getMeta(['meta[property="og:type"]']);
         const author = getMeta(['meta[name="author"]', 'meta[property="article:author"]']);
         const siteName = getMeta(['meta[property="og:site_name"]']);
+        const ogImage = getMeta(['meta[property="og:image"]', 'meta[name="twitter:image"]']);
+        const lang = document.documentElement.lang || '';
+        const canonical = document.querySelector('link[rel="canonical"]')?.href || '';
 
-        // Gộp thành 1 đoạn text ngắn gọn cho AI
-        const parts = [];
-        if (ogTitle && ogTitle !== title) parts.push(`Title: ${ogTitle}`);
-        if (description) parts.push(`Description: ${description}`);
-        if (keywords) parts.push(`Keywords: ${keywords}`);
-        if (ogType) parts.push(`Type: ${ogType}`);
-        if (author) parts.push(`Author: ${author}`);
-        if (siteName) parts.push(`Site: ${siteName}`);
-
-        return parts.join('\n');
+        return { title, description, ogTitle, keywords, ogType, author, siteName, ogImage, lang, canonical };
       },
     });
-    return results?.[0]?.result || '';
+    const meta = results?.[0]?.result || {};
+
+    // Build compact string for AI prompt
+    const parts = [];
+    if (meta.ogTitle && meta.ogTitle !== meta.title) parts.push(`Title: ${meta.ogTitle}`);
+    if (meta.description) parts.push(`Description: ${meta.description}`);
+    if (meta.keywords) parts.push(`Keywords: ${meta.keywords}`);
+    if (meta.ogType) parts.push(`Type: ${meta.ogType}`);
+    if (meta.author) parts.push(`Author: ${meta.author}`);
+    if (meta.siteName) parts.push(`Site: ${meta.siteName}`);
+    meta._aiText = parts.join('\n');
+
+    return meta;
   } catch (e) {
-    // Tab không inject được (chrome://, extension pages, v.v.) — bỏ qua
-    return '';
+    return { _aiText: '' };
   }
 }
 
 async function openSaveModal(tab) {
   modalTab = tab;
-  modalPageContent = '';
+  modalPageMeta = {};
   selectedTags = suggestTags(tab.title, tab.url);
 
-  // Clip page content ngầm (không block UI)
-  getPageContent(tab.id).then(content => {
-    modalPageContent = content;
+  // Read meta tags in background (non-blocking)
+  getPageMeta(tab.id).then(meta => {
+    modalPageMeta = meta;
   });
 
-  // Điền thông tin
+  // Populate modal
   document.getElementById('modal-title').textContent = tab.title;
   document.getElementById('modal-url').textContent = tab.url;
   document.getElementById('modal-reason').value = '';
@@ -275,13 +291,13 @@ async function openSaveModal(tab) {
     faviconEl.textContent = '🌐';
   }
 
-  // Kiểm tra AI có bật không
+  // Check if AI is enabled
   const settings = await getSettings();
   const aiRow = document.getElementById('modal-ai-row');
   const summaryHint = document.getElementById('summary-hint');
   if (settings.aiEnabled && settings.aiBaseUrl && settings.aiModel) {
     aiRow.classList.remove('hidden');
-    summaryHint.textContent = '(AI sẽ điền nếu bật)';
+    summaryHint.textContent = '(AI will fill if enabled)';
   } else {
     aiRow.classList.add('hidden');
     summaryHint.textContent = '(optional)';
@@ -308,7 +324,7 @@ function renderModalTags() {
   });
 }
 
-// Thêm tag bằng Enter hoặc dấu phẩy
+// Add tag on Enter or comma
 document.getElementById('modal-tag-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ',') {
     e.preventDefault();
@@ -322,7 +338,7 @@ document.getElementById('modal-tag-input').addEventListener('keydown', (e) => {
 });
 
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
-document.getElementById('modal-backdrop') // sẽ gắn sau khi render
+document.getElementById('modal-backdrop') // backdrop click handler
 document.querySelector('.modal-backdrop')?.addEventListener('click', closeModal);
 
 document.getElementById('save-modal').addEventListener('click', (e) => {
@@ -336,11 +352,11 @@ document.getElementById('btn-ai-suggest').addEventListener('click', async () => 
   const status = document.getElementById('ai-suggest-status');
 
   btn.disabled = true;
-  status.textContent = '⏳ Đang hỏi AI...';
+  status.textContent = '⏳ Asking AI...';
   status.className = 'ai-status loading';
 
   try {
-    const result = await callAI(modalTab.title, modalTab.url, modalPageContent);
+    const result = await callAI(modalTab.title, modalTab.url, modalPageMeta._aiText || '');
     if (result) {
       const settings = await getSettings();
       if (settings.featTags && result.tags?.length) {
@@ -350,11 +366,11 @@ document.getElementById('btn-ai-suggest').addEventListener('click', async () => 
       if (settings.featSummary && result.summary) {
         document.getElementById('modal-summary').value = result.summary;
       }
-      status.textContent = '✅ Đã điền xong!';
+      status.textContent = '✅ Done!';
       status.className = 'ai-status';
     }
   } catch (e) {
-    status.textContent = `❌ Lỗi: ${e.message}`;
+    status.textContent = `❌ Error: ${e.message}`;
     status.className = 'ai-status error';
   }
 
@@ -373,14 +389,15 @@ document.getElementById('modal-save').addEventListener('click', async () => {
     summary,
     tags: selectedTags,
     favIconUrl: modalTab.favIconUrl,
+    pageMeta: modalPageMeta._aiText ? modalPageMeta : undefined,
   });
 
   if (result.duplicate) {
-    showToast('⚠️ Tab này đã được lưu rồi!');
+    showToast('⚠️ Tab already saved!');
   } else {
     savedUrls.add(modalTab.url);
-    showToast('✅ Đã lưu vào Knowledge Base!');
-    renderTabs(allTabs); // refresh để cập nhật trạng thái saved
+    showToast('✅ Saved to Knowledge Base!');
+    renderTabs(allTabs); // refresh to update saved state
   }
 
   closeModal();
@@ -395,12 +412,12 @@ function closeModal() {
 
 document.getElementById('btn-save-current').addEventListener('click', async () => {
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!activeTab) { showToast('⚠️ Không tìm thấy tab hiện tại'); return; }
-  if (savedUrls.has(activeTab.url)) { showToast('⚠️ Tab này đã được lưu rồi!'); return; }
+  if (!activeTab) { showToast('⚠️ Could not find current tab'); return; }
+  if (savedUrls.has(activeTab.url)) { showToast('⚠️ Tab already saved!'); return; }
   const tab = allTabs.find(t => t.id === activeTab.id) || {
     id: activeTab.id,
     windowId: activeTab.windowId,
-    title: activeTab.title || '(Không có tiêu đề)',
+    title: activeTab.title || '(No title)',
     url: activeTab.url || '',
     favIconUrl: activeTab.favIconUrl || '',
     active: true,
@@ -429,14 +446,14 @@ document.getElementById('btn-reload-ext').addEventListener('click', () => {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => showToast('✅ Đã copy!')).catch(() => {
+  navigator.clipboard.writeText(text).then(() => showToast('✅ Copied!')).catch(() => {
     const ta = document.createElement('textarea');
     ta.value = text;
     document.body.appendChild(ta);
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    showToast('✅ Đã copy!');
+    showToast('✅ Copied!');
   });
 }
 

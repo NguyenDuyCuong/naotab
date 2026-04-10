@@ -1,7 +1,7 @@
 // ── State ──────────────────────────────────────────────────────────────────────
 let allBookmarks = [];
-let activeStatus = 'all';
 let activeTag = null;
+let excludedTags = new Set(); // tags excluded from graph edges
 let searchQuery = '';
 let currentView = 'graph';
 let editingId = null;
@@ -21,7 +21,6 @@ function renderAll() {
 // ── Filter logic ───────────────────────────────────────────────────────────────
 function getFiltered() {
   return allBookmarks.filter(b => {
-    if (activeStatus !== 'all' && b.status !== activeStatus) return false;
     if (activeTag && !b.tags.includes(activeTag)) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -37,24 +36,44 @@ function getFiltered() {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 function updateSidebar() {
-  const counts = { all: allBookmarks.length, unread: 0, reading: 0, revisit: 0, done: 0 };
-  allBookmarks.forEach(b => { if (counts[b.status] !== undefined) counts[b.status]++; });
-  Object.entries(counts).forEach(([k, v]) => {
-    const el = document.getElementById('count-' + k);
-    if (el) el.textContent = v;
-  });
-
   // Tag cloud
   const tagCount = {};
   allBookmarks.forEach(b => b.tags.forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }));
   const sorted = Object.entries(tagCount).sort((a, b) => b[1] - a[1]);
   const cloud = document.getElementById('tag-cloud');
   cloud.innerHTML = sorted.map(function([tag, cnt]) {
-    return '<span class="tag-pill ' + (activeTag === tag ? 'active' : '') + '" data-tag="' + escapeHtml(tag) + '">' + escapeHtml(tag) + ' <small>' + cnt + '</small></span>';
+    const isActive = activeTag === tag;
+    const isExcluded = excludedTags.has(tag);
+    const cls = 'tag-pill' + (isActive ? ' active' : '') + (isExcluded ? ' excluded' : '');
+    return (
+      '<span class="' + cls + '" data-tag="' + escapeHtml(tag) + '">' +
+        escapeHtml(tag) + ' <small>' + cnt + '</small>' +
+        '<button class="tag-exclude-btn" data-tag="' + escapeHtml(tag) + '" title="' + (isExcluded ? 'Re-enable in graph' : 'Hide connections in graph') + '">' +
+          (isExcluded ? '↩' : '✕') +
+        '</button>' +
+      '</span>'
+    );
   }).join('');
+
+  // Click pill → filter
   cloud.querySelectorAll('.tag-pill').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tag-exclude-btn')) return;
       activeTag = activeTag === el.dataset.tag ? null : el.dataset.tag;
+      renderAll();
+    });
+  });
+
+  // Click ✕ → exclude/unexclude from graph edges
+  cloud.querySelectorAll('.tag-exclude-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const tag = btn.dataset.tag;
+      if (excludedTags.has(tag)) {
+        excludedTags.delete(tag);
+      } else {
+        excludedTags.add(tag);
+      }
       renderAll();
     });
   });
@@ -78,7 +97,7 @@ function renderList(bookmarks) {
         '<span class="emoji">' + (allBookmarks.length === 0 ? '📭' : '🔍') + '</span>' +
         '<p>' + (allBookmarks.length === 0
           ? 'Chưa có bookmark nào.\nMở popup extension và click 💾 trên tab muốn lưu!'
-          : 'Không tìm thấy kết quả nào.') + '</p>' +
+          : 'No results found.') + '</p>' +
       '</div>';
     return;
   }
@@ -90,8 +109,7 @@ function renderList(bookmarks) {
     const tags = (b.tags || []).map(t =>
       '<span class="card-tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>'
     ).join('');
-    const date = new Date(b.savedAt).toLocaleDateString('vi-VN');
-    const statusClass = 'status-' + b.status;
+    const date = new Date(b.savedAt).toLocaleDateString('en-US');
 
     return (
       '<div class="bookmark-card" data-id="' + b.id + '">' +
@@ -107,12 +125,6 @@ function renderList(bookmarks) {
         '<div class="card-footer">' +
           '<div class="card-tags">' + tags + '</div>' +
           '<span class="card-date">' + date + '</span>' +
-          '<select class="status-select ' + statusClass + '" data-id="' + b.id + '">' +
-            '<option value="unread"' + (b.status === 'unread' ? ' selected' : '') + '>🔵 Chưa đọc</option>' +
-            '<option value="reading"' + (b.status === 'reading' ? ' selected' : '') + '>📖 Đang đọc</option>' +
-            '<option value="revisit"' + (b.status === 'revisit' ? ' selected' : '') + '>🔁 Xem lại</option>' +
-            '<option value="done"' + (b.status === 'done' ? ' selected' : '') + '>✅ Xong</option>' +
-          '</select>' +
           '<div class="card-actions">' +
             '<button class="btn-edit" data-id="' + b.id + '" title="Chỉnh sửa">✏️</button>' +
             '<button class="btn-delete" data-id="' + b.id + '" title="Xoá">🗑️</button>' +
@@ -130,11 +142,12 @@ function renderList(bookmarks) {
     });
   });
 
-  container.querySelectorAll('.status-select').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      await updateBookmark(sel.dataset.id, { status: sel.value });
-      allBookmarks = await getBookmarks();
-      renderAll();
+  // Click card → open side panel (ignore clicks on links/buttons)
+  container.querySelectorAll('.bookmark-card').forEach(card => {
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('a, button, select')) return;
+      openNodePanel(card.dataset.id);
     });
   });
 
@@ -144,11 +157,11 @@ function renderList(bookmarks) {
 
   container.querySelectorAll('.btn-delete').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Xoá bookmark này?')) return;
+      if (!confirm('Delete this bookmark?')) return;
       await deleteBookmark(btn.dataset.id);
       allBookmarks = await getBookmarks();
       renderAll();
-      showToast('🗑️ Đã xoá');
+      showToast('🗑️ Deleted');
     });
   });
 }
@@ -167,7 +180,8 @@ function renderGraph(bookmarks) {
   const links = [];
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
-      const shared = nodes[i].tags.filter(t => nodes[j].tags.includes(t));
+      // Only use tags that are not excluded for building edges
+      const shared = nodes[i].tags.filter(t => nodes[j].tags.includes(t) && !excludedTags.has(t));
       if (shared.length > 0) {
         links.push({ source: nodes[i].id, target: nodes[j].id, shared });
       }
@@ -187,8 +201,6 @@ function renderGraph(bookmarks) {
   const link = g.append('g').selectAll('line').data(links).join('line')
     .attr('stroke', '#dadce0').attr('stroke-width', 1.5).attr('stroke-opacity', 0.6);
 
-  const nodeColor = { unread: '#1a73e8', reading: '#fbbc04', done: '#34a853', revisit: '#e37400' };
-
   const node = g.append('g').selectAll('g').data(nodes).join('g')
     .attr('cursor', 'pointer')
     .call(d3.drag()
@@ -198,9 +210,9 @@ function renderGraph(bookmarks) {
 
   node.append('circle')
     .attr('r', 18)
-    .attr('fill', d => nodeColor[d.status] || '#1a73e8')
+    .attr('fill', '#1a73e8')
     .attr('fill-opacity', 0.15)
-    .attr('stroke', d => nodeColor[d.status] || '#1a73e8')
+    .attr('stroke', '#1a73e8')
     .attr('stroke-width', 2);
 
   node.append('text')
@@ -296,19 +308,10 @@ document.getElementById('edit-save').addEventListener('click', async () => {
   allBookmarks = await getBookmarks();
   document.getElementById('edit-modal').classList.add('hidden');
   renderAll();
-  showToast('✅ Đã cập nhật!');
+  showToast('✅ Updated!');
 });
 
 // ── Toolbar events ─────────────────────────────────────────────────────────────
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    activeStatus = btn.dataset.status;
-    renderView();
-  });
-});
-
 document.getElementById('search-input').addEventListener('input', e => {
   searchQuery = e.target.value;
   renderView();
@@ -332,6 +335,13 @@ document.getElementById('btn-graph-view').addEventListener('click', () => {
   renderView();
 });
 
+document.getElementById('btn-refresh').addEventListener('click', async () => {
+  allBookmarks = await getBookmarks();
+  closeNodePanel();
+  renderAll();
+  showToast('🔄 Refreshed');
+});
+
 document.getElementById('btn-export').addEventListener('click', async () => {
   const json = await exportJSON();
   const blob = new Blob([json], { type: 'application/json' });
@@ -341,19 +351,19 @@ document.getElementById('btn-export').addEventListener('click', async () => {
   a.download = 'naotab-' + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
   URL.revokeObjectURL(url);
-  showToast('✅ Đã xuất JSON!');
+  showToast('✅ JSON exported!');
 });
 
 // Export Obsidian vault (ZIP of .md files)
 document.getElementById('btn-export-obsidian').addEventListener('click', async () => {
   const btn = document.getElementById('btn-export-obsidian');
   btn.disabled = true;
-  btn.textContent = '⏳ Đang tạo...';
+  btn.textContent = '⏳ Generating...';
 
   try {
     const files = await exportObsidian();
     if (files.length === 0) {
-      showToast('⚠️ Chưa có bookmark nào để export!');
+      showToast('⚠️ No bookmarks to export!');
       return;
     }
 
@@ -364,20 +374,20 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
       vault.file(filename, content);
     });
 
-    // Thêm README hướng dẫn import vào Obsidian
+    // Add README with Obsidian import guide
     vault.file('_README.md', [
       '# naoTab Vault',
       '',
-      'Vault này được export từ [naoTab](https://github.com/bsquang/naotab).',
+      'This vault was exported from [naoTab](https://github.com/bsquang/naotab).',
       '',
-      '## Cách import vào Obsidian',
+      '## How to import into Obsidian',
       '',
-      '1. Giải nén file ZIP này',
-      '2. Mở Obsidian → **Open folder as vault**',
-      '3. Chọn thư mục `naoTab-vault` vừa giải nén',
-      '4. Cài plugin **Dataview** để query bookmarks theo tag, status, v.v.',
+      '1. Unzip this ZIP file',
+      '2. Open Obsidian → **Open folder as vault**',
+      '3. Select the `naoTab-vault` folder you just unzipped',
+      '4. Install the **Dataview** plugin to query bookmarks by tag, status, etc.',
       '',
-      '## Dataview query ví dụ',
+      '## Example Dataview query',
       '',
       '````',
       '```dataview',
@@ -388,7 +398,7 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
       '```',
       '````',
       '',
-      `*Exported ${files.length} bookmarks on ${new Date().toLocaleDateString('vi-VN')}*`,
+      `*Exported ${files.length} bookmarks on ${new Date().toLocaleDateString('en-US')}*`,
     ].join('\n'));
 
     const blob = await zip.generateAsync({ type: 'blob' });
@@ -399,9 +409,9 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
     a.click();
     URL.revokeObjectURL(url);
 
-    showToast('✅ Đã export ' + files.length + ' notes cho Obsidian!');
+    showToast('✅ Exported ' + files.length + ' notes for Obsidian!');
   } catch (e) {
-    showToast('❌ Lỗi: ' + e.message);
+    showToast('❌ Error: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = '🟣 Export Obsidian';
@@ -419,9 +429,9 @@ document.getElementById('btn-import').addEventListener('change', async (e) => {
     const result = await importJSON(text);
     allBookmarks = await getBookmarks();
     renderAll();
-    showToast('✅ Đã import ' + result.imported + ' bookmark (bỏ qua ' + result.skipped + ' trùng)');
+    showToast('✅ Imported ' + result.imported + ' bookmarks (skipped ' + result.skipped + ' duplicates)');
   } catch (err) {
-    showToast('❌ File JSON không hợp lệ');
+    showToast('❌ Invalid JSON file');
   }
   e.target.value = '';
 });
@@ -441,10 +451,59 @@ function openNodePanel(id) {
 
   document.getElementById('panel-title').textContent = b.title;
   document.getElementById('panel-url').textContent = b.url;
-  document.getElementById('panel-status').value = b.status || 'unread';
   document.getElementById('panel-summary').value = b.summary || '';
   document.getElementById('panel-reason').value = b.reason || '';
   document.getElementById('panel-tags').value = (b.tags || []).join(', ');
+
+  // Show AI row only if AI is enabled
+  getSettings().then(settings => {
+    const aiRow = document.getElementById('panel-ai-row');
+    if (settings.aiEnabled && settings.aiBaseUrl && settings.aiModel) {
+      aiRow.classList.remove('hidden');
+    } else {
+      aiRow.classList.add('hidden');
+    }
+  });
+  document.getElementById('panel-ai-status').textContent = '';
+  document.getElementById('panel-ai-status').className = 'panel-ai-status';
+
+  // Render metadata
+  const fmt = iso => iso ? new Date(iso).toLocaleString('en-US') : '—';
+  const metaRows = [
+    ['ID', b.id],
+    ['Saved', fmt(b.savedAt)],
+    ['Updated', fmt(b.updatedAt)],
+    ['URL', b.url],
+  ];
+
+  const metaLabels = {
+    description: 'Description', ogTitle: 'OG Title', ogType: 'OG Type',
+    keywords: 'Keywords', author: 'Author', siteName: 'Site Name',
+    ogImage: 'OG Image', lang: 'Language', canonical: 'Canonical',
+  };
+  const pageMetaRows = b.pageMeta
+    ? Object.entries(b.pageMeta)
+        .filter(([k, v]) => v && metaLabels[k])
+        .map(([k, v]) => [metaLabels[k], v])
+    : [];
+
+  document.getElementById('panel-meta').innerHTML =
+    '<div class="panel-meta-label">Metadata</div>' +
+    metaRows.map(([k, v]) =>
+      '<div class="panel-meta-row">' +
+        '<span class="panel-meta-key">' + k + '</span>' +
+        '<span class="panel-meta-val">' + escapeHtml(String(v)) + '</span>' +
+      '</div>'
+    ).join('') +
+    (pageMetaRows.length
+      ? '<div class="panel-meta-label" style="margin-top:10px">Page Meta</div>' +
+        pageMetaRows.map(([k, v]) =>
+          '<div class="panel-meta-row">' +
+            '<span class="panel-meta-key">' + k + '</span>' +
+            '<span class="panel-meta-val">' + escapeHtml(String(v)) + '</span>' +
+          '</div>'
+        ).join('')
+      : '');
 
   document.getElementById('node-panel').classList.add('open');
 }
@@ -456,6 +515,52 @@ function closeNodePanel() {
 
 document.getElementById('panel-close').addEventListener('click', closeNodePanel);
 
+// AI Suggest in panel
+document.getElementById('panel-btn-ai').addEventListener('click', async () => {
+  if (!panelId) return;
+  const b = allBookmarks.find(x => x.id === panelId);
+  if (!b) return;
+
+  const btn = document.getElementById('panel-btn-ai');
+  const status = document.getElementById('panel-ai-status');
+  btn.disabled = true;
+  status.textContent = '⏳ Asking AI...';
+  status.className = 'panel-ai-status';
+
+  try {
+    // Rebuild AI text from saved pageMeta if available
+    const meta = b.pageMeta || {};
+    const parts = [];
+    if (meta.ogTitle && meta.ogTitle !== b.title) parts.push('Title: ' + meta.ogTitle);
+    if (meta.description) parts.push('Description: ' + meta.description);
+    if (meta.keywords) parts.push('Keywords: ' + meta.keywords);
+    if (meta.ogType) parts.push('Type: ' + meta.ogType);
+    if (meta.author) parts.push('Author: ' + meta.author);
+    if (meta.siteName) parts.push('Site: ' + meta.siteName);
+    const aiText = parts.join('\n');
+
+    const result = await callAI(b.title, b.url, aiText);
+    if (result) {
+      const settings = await getSettings();
+      if (settings.featTags && result.tags?.length) {
+        const existing = document.getElementById('panel-tags').value
+          .split(',').map(t => t.trim()).filter(Boolean);
+        const merged = [...new Set([...result.tags, ...existing])].slice(0, 8);
+        document.getElementById('panel-tags').value = merged.join(', ');
+      }
+      if (settings.featSummary && result.summary) {
+        document.getElementById('panel-summary').value = result.summary;
+      }
+      status.textContent = '✅ Done!';
+    }
+  } catch (e) {
+    status.textContent = '❌ ' + e.message;
+    status.className = 'panel-ai-status error';
+  }
+
+  btn.disabled = false;
+});
+
 document.getElementById('panel-open-url').addEventListener('click', () => {
   const b = allBookmarks.find(x => x.id === panelId);
   if (b) window.open(b.url, '_blank');
@@ -463,35 +568,34 @@ document.getElementById('panel-open-url').addEventListener('click', () => {
 
 document.getElementById('panel-save').addEventListener('click', async () => {
   if (!panelId) return;
-  const status = document.getElementById('panel-status').value;
   const summary = document.getElementById('panel-summary').value.trim();
   const reason = document.getElementById('panel-reason').value.trim();
   const tags = document.getElementById('panel-tags').value.split(',').map(t => t.trim()).filter(Boolean);
-  await updateBookmark(panelId, { status, summary, reason, tags });
+  await updateBookmark(panelId, { summary, reason, tags });
   allBookmarks = await getBookmarks();
   renderAll();
-  showToast('✅ Đã cập nhật!');
+  showToast('✅ Updated!');
 });
 
 document.getElementById('panel-delete').addEventListener('click', async () => {
   if (!panelId) return;
-  if (!confirm('Xoá bookmark này?')) return;
+  if (!confirm('Delete this bookmark?')) return;
   await deleteBookmark(panelId);
   allBookmarks = await getBookmarks();
   closeNodePanel();
   renderAll();
-  showToast('🗑️ Đã xoá');
+  showToast('🗑️ Deleted');
 });
 
 // ── Delete all ─────────────────────────────────────────────────────────────────
 document.getElementById('btn-delete-all').addEventListener('click', async () => {
-  if (allBookmarks.length === 0) { showToast('⚠️ Chưa có bookmark nào!'); return; }
-  if (!confirm('Xoá tất cả ' + allBookmarks.length + ' bookmark? Không thể hoàn tác!')) return;
+  if (allBookmarks.length === 0) { showToast('⚠️ No bookmarks yet!'); return; }
+  if (!confirm('Delete all ' + allBookmarks.length + ' bookmarks? This cannot be undone!')) return;
   await chrome.storage.local.remove('tab_bookmarks');
   allBookmarks = [];
   closeNodePanel();
   renderAll();
-  showToast('🗑️ Đã xoá tất cả!');
+  showToast('🗑️ Deleted tất cả!');
 });
 
 // ── Toast ──────────────────────────────────────────────────────────────────────

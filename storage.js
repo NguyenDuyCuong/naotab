@@ -101,22 +101,29 @@ async function getBookmarks() {
 }
 
 // Lưu một bookmark mới
-async function saveBookmark({ url, title, reason, summary, tags, favIconUrl }) {
+async function saveBookmark({ url, title, reason, summary, tags, favIconUrl, pageMeta }) {
   const bookmarks = await getBookmarks();
 
   // Không lưu trùng URL
   const exists = bookmarks.find(b => b.url === url);
   if (exists) return { duplicate: true, bookmark: exists };
 
+  // Lọc bỏ _aiText trước khi lưu
+  let cleanMeta;
+  if (pageMeta) {
+    const { _aiText, ...rest } = pageMeta;
+    cleanMeta = Object.fromEntries(Object.entries(rest).filter(([, v]) => v));
+  }
+
   const bookmark = {
     id: Date.now().toString(),
     url,
     title,
-    reason,       // lý do lưu (do người dùng nhập)
-    summary,      // tóm tắt (do AI hoặc người dùng nhập)
-    tags,         // mảng string
+    reason,
+    summary,
+    tags,
     favIconUrl: favIconUrl || '',
-    status: 'unread',   // unread | reading | done | revisit
+    pageMeta: cleanMeta || null,
     savedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -180,6 +187,45 @@ function suggestTags(title, url) {
       matched.push(tag);
     }
   }
+
+  // Add well-known site name as a tag (before slicing, so it's always included)
+  const siteMap = {
+    'github.com': 'github',
+    'stackoverflow.com': 'stackoverflow',
+    'medium.com': 'medium',
+    'dev.to': 'devto',
+    'hackernews': 'hackernews',
+    'news.ycombinator.com': 'hackernews',
+    'reddit.com': 'reddit',
+    'youtube.com': 'youtube',
+    'youtu.be': 'youtube',
+    'npmjs.com': 'npm',
+    'pypi.org': 'pypi',
+    'crates.io': 'crates-io',
+    'hub.docker.com': 'dockerhub',
+    'vercel.com': 'vercel',
+    'netlify.com': 'netlify',
+    'cloudflare.com': 'cloudflare',
+    'linear.app': 'linear',
+    'notion.so': 'notion',
+    'figma.com': 'figma',
+    'twitter.com': 'twitter',
+    'x.com': 'twitter',
+    'linkedin.com': 'linkedin',
+    'producthunt.com': 'producthunt',
+    'hashnode.com': 'hashnode',
+    'substack.com': 'substack',
+  };
+
+  try {
+    const hostname = new URL(url).hostname.replace('www.', '');
+    for (const [domain, tag] of Object.entries(siteMap)) {
+      if (hostname === domain || hostname.endsWith('.' + domain)) {
+        matched.unshift(tag); // site tag goes first
+        break;
+      }
+    }
+  } catch (_) {}
 
   return [...new Set(matched)].slice(0, 6);
 }

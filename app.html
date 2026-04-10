@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -73,33 +73,6 @@
       margin-bottom: 6px;
     }
 
-    .filter-btn {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      padding: 5px 8px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 12px;
-      color: #3c4043;
-      transition: background 0.12s;
-      user-select: none;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-    }
-    .filter-btn:hover { background: #f1f3f4; }
-    .filter-btn.active { background: #e8f0fe; color: #1a73e8; font-weight: 600; }
-    .filter-count {
-      margin-left: auto;
-      font-size: 10px;
-      background: #f1f3f4;
-      color: #5f6368;
-      padding: 1px 6px;
-      border-radius: 10px;
-    }
-    .filter-btn.active .filter-count { background: #aecbfa; color: #1557b0; }
 
     .tag-cloud {
       display: flex;
@@ -120,6 +93,22 @@
     }
     .tag-pill:hover { border-color: #1a73e8; color: #1a73e8; }
     .tag-pill.active { background: #e8f0fe; color: #1a73e8; border-color: #aecbfa; font-weight: 600; }
+    .tag-pill.excluded { background: #fce8e6; color: #c5221f; border-color: #f5c6c4; text-decoration: line-through; opacity: 0.75; }
+    .tag-pill.excluded:hover { border-color: #d93025; opacity: 1; }
+    .tag-exclude-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 10px;
+      color: inherit;
+      padding: 0 0 0 4px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.1s;
+      vertical-align: middle;
+    }
+    .tag-pill:hover .tag-exclude-btn,
+    .tag-pill.excluded .tag-exclude-btn { opacity: 1; }
 
     /* ── Main content ── */
     .main {
@@ -262,20 +251,6 @@
     .card-actions button:hover { background: #f1f3f4; }
     .card-actions .btn-delete:hover { background: #fce8e6; border-color: #d93025; color: #d93025; }
 
-    .status-select {
-      padding: 2px 6px;
-      font-size: 11px;
-      border: 1px solid #dadce0;
-      border-radius: 4px;
-      background: white;
-      cursor: pointer;
-      color: #3c4043;
-      outline: none;
-    }
-    .status-unread { border-color: #fbbc04; color: #b06000; background: #fef9e7; }
-    .status-reading { border-color: #1a73e8; color: #1a73e8; background: #e8f0fe; }
-    .status-done { border-color: #34a853; color: #1e7e34; background: #e6f4ea; }
-    .status-revisit { border-color: #e37400; color: #b05900; background: #fef0e6; }
 
     /* ── Graph view ── */
     #graph-view {
@@ -425,9 +400,72 @@
       background: #fafafa;
       transition: border-color 0.15s, background 0.15s;
     }
+    .panel-field textarea#panel-summary {
+      resize: vertical;
+      min-height: 60px;
+    }
     .panel-field textarea:focus,
     .panel-field input:focus,
     .panel-field select:focus { border-color: #1a73e8; background: white; }
+
+    .panel-ai-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: #f0f4ff;
+      border: 1px solid #c5d8ff;
+      border-radius: 7px;
+    }
+    .panel-ai-row.hidden { display: none; }
+    .btn-panel-ai {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-panel-ai:hover { background: #1557b0; }
+    .btn-panel-ai:disabled { opacity: 0.6; cursor: not-allowed; }
+    .panel-ai-status { font-size: 11px; color: #5f6368; }
+    .panel-ai-status.error { color: #d93025; }
+
+    .panel-meta {
+      border-top: 1px solid #f0f0f0;
+      padding-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .panel-meta-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #80868b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .panel-meta-row {
+      display: flex;
+      gap: 6px;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .panel-meta-key {
+      color: #9aa0a6;
+      flex-shrink: 0;
+      width: 76px;
+    }
+    .panel-meta-val {
+      color: #3c4043;
+      word-break: break-all;
+      flex: 1;
+    }
 
     .panel-footer {
       padding: 12px 16px;
@@ -485,11 +523,12 @@
 <div class="topbar">
   <h1>📚 naoTab — Knowledge Base</h1>
   <div class="topbar-actions">
+    <button id="btn-refresh" title="Refresh">🔄</button>
     <button id="btn-export">📤 Export JSON</button>
     <button id="btn-export-obsidian">🟣 Export Obsidian</button>
     <button id="btn-import-trigger">📥 Import JSON</button>
     <input type="file" id="btn-import" accept=".json" style="display:none" />
-    <button id="btn-delete-all" style="background:rgba(217,48,37,0.2);border-color:rgba(217,48,37,0.5);">🗑️ Xoá tất cả</button>
+    <button id="btn-delete-all" style="background:rgba(217,48,37,0.2);border-color:rgba(217,48,37,0.5);">🗑️ Delete all</button>
   </div>
 </div>
 
@@ -497,15 +536,6 @@
 
   <!-- Sidebar -->
   <div class="sidebar">
-    <div class="sidebar-section">
-      <h3>Trạng thái</h3>
-      <button class="filter-btn active" data-status="all">📋 Tất cả <span class="filter-count" id="count-all">0</span></button>
-      <button class="filter-btn" data-status="unread">🔵 Chưa đọc <span class="filter-count" id="count-unread">0</span></button>
-      <button class="filter-btn" data-status="reading">📖 Đang đọc <span class="filter-count" id="count-reading">0</span></button>
-      <button class="filter-btn" data-status="revisit">🔁 Cần xem lại <span class="filter-count" id="count-revisit">0</span></button>
-      <button class="filter-btn" data-status="done">✅ Xong <span class="filter-count" id="count-done">0</span></button>
-    </div>
-
     <div class="sidebar-section">
       <h3>Tags</h3>
       <div id="tag-cloud" class="tag-cloud"></div>
@@ -515,7 +545,7 @@
   <!-- Main -->
   <div class="main">
     <div class="main-toolbar">
-      <input type="text" id="search-input" placeholder="🔍 Tìm theo title, URL, lý do, tag..." />
+      <input type="text" id="search-input" placeholder="🔍 Search by title, URL, reason, tag..." />
       <span id="result-count" class="result-count"></span>
       <div class="view-toggle">
         <button class="view-btn active" id="btn-list-view" title="List view">☰</button>
@@ -538,21 +568,21 @@
 <div id="edit-modal" class="edit-modal hidden">
   <div class="edit-modal-backdrop"></div>
   <div class="edit-modal-box">
-    <h2>✏️ Chỉnh sửa bookmark</h2>
+    <h2>✏️ Edit bookmark</h2>
     <div class="edit-field">
       <label>Summary</label>
       <textarea id="edit-summary" rows="2"></textarea>
     </div>
     <div class="edit-field">
-      <label>Lý do lưu</label>
+      <label>Reason</label>
       <textarea id="edit-reason" rows="2"></textarea>
     </div>
     <div class="edit-field">
-      <label>Tags (phân cách bằng dấu phẩy)</label>
+      <label>Tags (comma separated)</label>
       <input type="text" id="edit-tags" />
     </div>
     <div class="edit-modal-footer">
-      <button class="btn-secondary" id="edit-cancel">Huỷ</button>
+      <button class="btn-secondary" id="edit-cancel">Cancel</button>
       <button class="btn-primary" id="edit-save">Lưu</button>
     </div>
   </div>
@@ -569,32 +599,29 @@
     <button class="panel-close" id="panel-close">✕</button>
   </div>
   <div class="panel-body">
-    <div class="panel-field">
-      <label>Trạng thái</label>
-      <select id="panel-status">
-        <option value="unread">🔵 Chưa đọc</option>
-        <option value="reading">📖 Đang đọc</option>
-        <option value="revisit">🔁 Cần xem lại</option>
-        <option value="done">✅ Xong</option>
-      </select>
+    <div id="panel-ai-row" class="panel-ai-row hidden">
+      <button id="panel-btn-ai" class="btn-panel-ai">✨ AI Suggest</button>
+      <span id="panel-ai-status" class="panel-ai-status"></span>
     </div>
     <div class="panel-field">
       <label>Summary</label>
-      <textarea id="panel-summary" rows="3" placeholder="Tóm tắt ngắn về trang này..."></textarea>
+      <textarea id="panel-summary" rows="3" placeholder="Short summary of this page..."></textarea>
     </div>
     <div class="panel-field">
-      <label>Lý do lưu</label>
-      <textarea id="panel-reason" rows="2" placeholder="Tại sao bạn lưu cái này?"></textarea>
+      <label>Reason</label>
+      <textarea id="panel-reason" rows="2" placeholder="Why did you save this?"></textarea>
     </div>
     <div class="panel-field">
-      <label>Tags (phân cách bằng dấu phẩy)</label>
-      <input type="text" id="panel-tags" placeholder="vd: react, typescript, tutorial" />
+      <label>Tags (comma separated)</label>
+      <input type="text" id="panel-tags" placeholder="e.g. react, typescript, tutorial" />
     </div>
+
+    <div class="panel-meta" id="panel-meta"></div>
   </div>
   <div class="panel-footer">
-    <button class="btn-open-url" id="panel-open-url">↗ Mở</button>
+    <button class="btn-open-url" id="panel-open-url">↗ Open</button>
     <button class="btn-panel-delete" id="panel-delete">🗑️</button>
-    <button class="btn-panel-save" id="panel-save">💾 Lưu</button>
+    <button class="btn-panel-save" id="panel-save">💾 Save</button>
   </div>
 </div>
 

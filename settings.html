@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -224,7 +224,7 @@
 <div class="page">
 
   <div class="page-header">
-    <a href="#" class="back-btn" id="btn-back">← Quay lại</a>
+    <a href="#" class="back-btn" id="btn-back">← Back</a>
     <h1>⚙️ Settings</h1>
   </div>
 
@@ -233,14 +233,14 @@
     <div class="card-title">
       <div>
         <h2>✨ AI Integration</h2>
-        <p>Tự động suggest tags và summary khi lưu bookmark</p>
+        <p>Auto-suggest tags and summary when saving a bookmark</p>
       </div>
     </div>
     <div class="card-body" style="gap:12px">
       <div class="toggle-row">
         <div>
-          <div class="toggle-label">Bật AI</div>
-          <div class="toggle-desc">Khi tắt: bạn tự nhập tags và summary (mặc định)</div>
+          <div class="toggle-label">Enable AI</div>
+          <div class="toggle-desc">When off: enter tags and summary manually (default)</div>
         </div>
         <label class="toggle">
           <input type="checkbox" id="ai-enabled" />
@@ -254,14 +254,14 @@
   <div class="card" id="ai-config-card">
     <div class="card-title">
       <div>
-        <h2>🔧 Cấu hình AI Provider</h2>
-        <p>Hỗ trợ bất kỳ provider nào compatible với OpenAI API format</p>
+        <h2>🔧 AI Provider Configuration</h2>
+        <p>Compatible with any OpenAI API-compatible provider</p>
       </div>
     </div>
     <div class="card-body" id="ai-config-body">
 
       <div class="field">
-        <label>Provider nhanh</label>
+        <label>Quick presets</label>
         <div class="provider-presets">
           <button class="preset-btn" data-provider="openai">OpenAI</button>
           <button class="preset-btn" data-provider="claude">Claude (Anthropic)</button>
@@ -275,7 +275,7 @@
       <div class="field">
         <label>API Base URL</label>
         <input type="text" id="ai-base-url" placeholder="https://api.openai.com/v1" />
-        <div class="field-hint">Endpoint gốc, không bao gồm /chat/completions</div>
+        <div class="field-hint">Base endpoint, excluding /chat/completions</div>
       </div>
 
       <div class="field-row">
@@ -290,11 +290,11 @@
       </div>
 
       <div class="info-box">
-        <strong>Lưu ý bảo mật:</strong> API key được lưu trong <code>chrome.storage.local</code> trên máy bạn, không gửi đi đâu ngoài provider bạn chọn.
+        <strong>Security note:</strong> Your API key is stored locally in <code>chrome.storage.local</code> and only sent to your chosen provider.
       </div>
 
       <div class="test-row">
-        <button class="btn-test" id="btn-test">🧪 Test kết nối</button>
+        <button class="btn-test" id="btn-test">🧪 Test connection</button>
         <span id="test-result"></span>
       </div>
 
@@ -305,8 +305,8 @@
   <div class="card" id="ai-features-card">
     <div class="card-title">
       <div>
-        <h2>🎛️ Tính năng AI</h2>
-        <p>Chọn tính năng nào bạn muốn dùng AI</p>
+        <h2>🎛️ AI Features</h2>
+        <p>Choose which features to use AI for</p>
       </div>
     </div>
     <div class="card-body" id="ai-features-body">
@@ -314,7 +314,7 @@
       <div class="toggle-row">
         <div>
           <div class="toggle-label">Auto-suggest tags khi save</div>
-          <div class="toggle-desc">AI đọc title + URL → gợi ý tags kỹ thuật</div>
+          <div class="toggle-desc">AI reads title + URL → suggests technical tags</div>
         </div>
         <label class="toggle">
           <input type="checkbox" id="feat-tags" checked />
@@ -325,7 +325,7 @@
       <div class="toggle-row">
         <div>
           <div class="toggle-label">Auto-generate summary khi save</div>
-          <div class="toggle-desc">AI tóm tắt trang trong 1-2 câu để bạn nhớ context</div>
+          <div class="toggle-desc">AI summarizes the page in 1–2 sentences to help you remember context</div>
         </div>
         <label class="toggle">
           <input type="checkbox" id="feat-summary" checked />
@@ -337,7 +337,7 @@
   </div>
 
   <div class="save-row">
-    <button class="btn-save" id="btn-save">💾 Lưu Settings</button>
+    <button class="btn-save" id="btn-save">💾 Save Settings</button>
   </div>
 
 </div>

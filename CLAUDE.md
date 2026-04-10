@@ -1,32 +1,42 @@
 # naoTab — Chrome Extension
 
-## Tổng quan dự án
+## Project overview
 
-Chrome Extension (Manifest V3) giúp developer quản lý và tổ chức browser tabs thành một **personal knowledge base**. Không cần server, không cần backend — toàn bộ chạy trong extension, data lưu tại `chrome.storage.local`.
+Chrome Extension (Manifest V3) that turns browser tabs into a **personal knowledge base**. No server, no backend — everything runs inside the extension, data stored in `chrome.storage.local`.
 
----
-
-## Cấu trúc file
-
-```
-Chrome Extension Tabs Explore/
-├── manifest.json       # Manifest V3, permissions: tabs + storage + unlimitedStorage
-├── popup.html/css/js   # Popup chính — xem tabs, save, copy, export
-├── app.html            # Knowledge Base full-page — list view + graph view + search
-├── settings.html       # Cấu hình AI provider (URL, key, model) + toggle features
-├── storage.js          # Module dùng chung: bookmarks CRUD + settings + AI call
-├── icons/              # icon16/48/128.png
-└── CLAUDE.md           # File này
-```
+UI language: **English**. Codebase comments: mixed EN/VI.
 
 ---
 
-## Kiến trúc & Data flow
+## File structure
+
+```
+naoTab/
+├── manifest.json        # Manifest V3, permissions: tabs + storage + unlimitedStorage + scripting
+├── popup.html           # Popup — view tabs, save, copy, export
+├── popup.css            # Popup styles
+├── popup.js             # Popup logic
+├── app.html             # Knowledge Base full-page (loads app.js, storage.js, d3.min.js, jszip.min.js)
+├── app.js               # Knowledge Base logic (graph + list + panel + filters)
+├── settings.html        # AI provider config page
+├── settings.js          # Settings page logic
+├── storage.js           # Shared module: bookmarks CRUD + settings + AI call
+├── d3.min.js            # D3.js v7.9.0 — bundled locally (CSP compliance)
+├── jszip.min.js         # JSZip 3.10.1 — bundled locally (CSP compliance)
+├── icons/               # icon16/48/128.png
+├── README.md            # English README (links to VI version)
+├── README.vi.md         # Vietnamese README (links to EN version)
+└── CLAUDE.md            # This file
+```
+
+---
+
+## Architecture & Data flow
 
 ```
 popup.js  ──────────────────────┐
-settings.html  ─────────────────┤──► storage.js ──► chrome.storage.local
-app.html (inline script)  ──────┘         │
+settings.js ────────────────────┤──► storage.js ──► chrome.storage.local
+app.js  ────────────────────────┘         │
                                           └──► External AI API (optional)
 ```
 
@@ -37,15 +47,27 @@ app.html (inline script)  ──────┘         │
   "id": "1712345678901",
   "url": "https://...",
   "title": "Page title",
-  "reason": "Lý do lưu — do người dùng nhập",
-  "summary": "Tóm tắt — do AI generate hoặc người dùng nhập",
+  "reason": "Why user saved this",
+  "summary": "AI-generated or manual summary",
   "tags": ["rust", "async", "performance"],
   "favIconUrl": "https://...",
-  "status": "unread | reading | done | revisit",
+  "pageMeta": {
+    "description": "og:description or meta description",
+    "ogTitle": "og:title",
+    "ogType": "article",
+    "keywords": "meta keywords",
+    "author": "meta author",
+    "siteName": "og:site_name",
+    "ogImage": "og:image URL",
+    "lang": "html lang attribute",
+    "canonical": "canonical URL"
+  },
   "savedAt": "2024-01-01T00:00:00.000Z",
   "updatedAt": "2024-01-01T00:00:00.000Z"
 }
 ```
+
+Note: `status` field removed from UI (was: unread/reading/done/revisit). `pageMeta` is `null` if meta read failed or tab was a chrome:// page.
 
 ### Data schema — settings object
 
@@ -62,96 +84,95 @@ app.html (inline script)  ──────┘         │
 
 ---
 
-## Các file chính và trách nhiệm
+## Key files and responsibilities
 
 ### `storage.js`
-Module dùng chung, được load vào cả popup và app.html bằng `<script src>`.
+Shared module, loaded via `<script src>` into popup and app.html.
 
-Exports (global functions):
-- `getBookmarks()` — đọc toàn bộ bookmarks
-- `saveBookmark({url, title, reason, summary, tags, favIconUrl})` — lưu mới, tự dedup theo URL
-- `updateBookmark(id, changes)` — update partial
-- `deleteBookmark(id)` — xoá theo id
-- `suggestTags(title, url)` — offline keyword matching, trả về array tags
-- `getSettings()` / `saveSettings(settings)` — đọc/ghi settings
-- `callAI(title, url)` — gọi AI API, trả về `{tags, summary}` hoặc `null`
-- `exportJSON()` / `importJSON(jsonString)` — export/import toàn bộ data
+Global functions:
+- `getBookmarks()` — read all bookmarks
+- `saveBookmark({url, title, reason, summary, tags, favIconUrl, pageMeta})` — save new, dedup by URL
+- `updateBookmark(id, changes)` — partial update
+- `deleteBookmark(id)` — delete by id
+- `suggestTags(title, url)` — offline keyword + domain matching, returns tag array
+- `getSettings()` / `saveSettings(settings)` — read/write settings
+- `callAI(title, url, pageMetaText)` — call AI API, returns `{tags, summary}` or throws
+- `exportJSON()` / `importJSON(jsonString)` — full backup/restore
+- `bookmarkToObsidianMd(bookmark)` / `exportObsidian()` — Obsidian .md export
 
 ### `popup.js`
-- Load tất cả tabs qua `chrome.tabs.query({})`
-- Group tabs theo `windowId`
-- Nút 💾 per-tab mở Save Modal
-- Nút 💾 per-window lưu cả window
-- Nút ✕ per-tab/window đóng tab/window
-- Save Modal: offline tags suggest + optional AI Suggest nếu AI bật
-- Toolbar: Copy All / JSON / Markdown / CSV export
+- `loadTabs()` — queries all tabs + bookmarks, marks saved URLs
+- `getPageMeta(tabId)` — uses `chrome.scripting.executeScript` to read SEO meta tags; returns structured object with `_aiText` field for AI prompt
+- `openSaveModal(tab)` — async, reads meta in background, shows/hides AI row
+- Window save: calls `getPageMeta()` for each tab, shows `⏳ N/total` progress, saves `pageMeta`
+- Single tab save: passes `pageMeta` to `saveBookmark()`
+- **"💾 Tab this"** button — saves active tab directly from toolbar
 
-### `app.html`
-Single-file app (HTML + inline CSS + inline JS + D3.js CDN).
-- **List view**: card per bookmark, filter sidebar (status + tags), full-text search
-- **Graph view**: D3 force-directed graph, nodes = bookmarks, edges = shared tags, zoom/drag, tooltip on hover, double-click mở URL
-- **Edit modal**: chỉnh summary, reason, tags
-- Export JSON / Import JSON
+### `app.js`
+State: `allBookmarks`, `activeTag`, `excludedTags` (Set), `searchQuery`, `currentView` (default: `'graph'`), `editingId`, `panelId`
 
-### `settings.html`
-- Toggle AI on/off (default: off)
-- Preset buttons: OpenAI, Claude, Ollama, Groq, OpenRouter
-- Fields: API Base URL, API Key, Model
-- Nút "Test kết nối" — gọi thực API với 1 message ngắn
-- Lưu vào `chrome.storage.local`
+Key features:
+- **Graph view** (default): D3 force simulation, single-click → node panel + highlight connected nodes, double-click → open URL, click background → reset
+- **List view**: card per bookmark, click card → node panel (links/buttons still work normally)
+- **Node panel**: slide-in right panel with full details, editable fields, AI Suggest button (shown only when AI enabled), save/delete/open-url actions
+- **Exclude tags**: tag pills in sidebar have `✕` button on hover → excluded tags shown as strikethrough red, not used for graph edges
+- **Delete all**: button in topbar with confirmation
+- **Refresh**: 🔄 button in topbar
+- **Obsidian export**: JSZip → .zip of .md files with YAML frontmatter
+
+### `settings.js`
+- PRESETS: openai, claude, ollama, groq, openrouter, custom
+- Detects active preset by matching saved URL
+- Test connection: detects Anthropic vs OpenRouter vs standard; adds `HTTP-Referer` + `X-Title` headers for OpenRouter
+- Save settings to `chrome.storage.local`
 
 ---
 
 ## AI Integration
 
-`callAI()` trong `storage.js` hỗ trợ 2 format:
+`callAI()` in `storage.js` supports 2 formats:
 
-**OpenAI-compatible** (OpenAI, Groq, Ollama, OpenRouter, v.v.):
+**OpenAI-compatible** (OpenAI, Groq, Ollama, OpenRouter, etc.):
 - Endpoint: `{baseUrl}/chat/completions`
 - Header: `Authorization: Bearer {apiKey}`
+- OpenRouter also needs: `HTTP-Referer: https://github.com/bsquang/naotab` + `X-Title: naoTab`
 
 **Anthropic native**:
 - Detect: `baseUrl.includes('anthropic.com')`
 - Endpoint: `{baseUrl}/messages`
 - Header: `x-api-key: {apiKey}` + `anthropic-version: 2023-06-01`
 
-Prompt gửi lên: title + URL → AI trả về JSON `{tags: [], summary: ""}`.
+**Token efficiency**: AI receives page meta tags (~75 tokens) instead of body text (~750 tokens) — 10× cheaper. `_aiText` field is a preformatted string built from `pageMeta` fields.
 
 ---
 
 ## Permissions
 
-| Permission | Lý do |
+| Permission | Reason |
 |---|---|
-| `tabs` | Đọc title, URL, favIconUrl của tất cả tabs |
-| `storage` | Lưu bookmarks và settings vào chrome.storage.local |
-| `unlimitedStorage` | Không giới hạn 10MB mặc định |
-
-Không dùng: `activeTab`, `scripting`, `host_permissions` — extension không inject vào trang.
-
----
-
-## Hướng phát triển tiếp theo
-
-- [ ] **Content script** — đọc thêm nội dung trang để AI summarize chính xác hơn
-- [ ] **Google Drive sync** — Export/import tự động qua Drive API
-- [ ] **AI Group** trong Knowledge Base — AI tự gom nhóm bookmarks theo topic
-- [ ] **Duplicate detector** — phát hiện tab trùng URL đang mở
-- [ ] **Dark mode**
-- [ ] **Browser history integration** — gợi ý save các trang đã visit nhiều
+| `tabs` | Read title, URL, favIconUrl of all tabs |
+| `storage` | Save bookmarks and settings to chrome.storage.local |
+| `unlimitedStorage` | Remove 10MB default cap |
+| `scripting` | Execute script in tabs to read meta tags |
+| `host_permissions: <all_urls>` | Allow meta reading on any tab |
 
 ---
 
-## Cách load extension để dev
+## Conventions when working with Claude
 
-1. Mở `chrome://extensions/`
-2. Bật **Developer mode**
-3. Click **Load unpacked** → chọn thư mục này
-4. Sau khi sửa code: mở popup → click **🔄** (nút reload ở header)
+- Claude edits files directly in this folder
+- User reloads extension via 🔄 button in popup
+- `storage.js` is shared — when adding functions, update popup.js and/or app.js as needed
+- No ES modules (`import/export`) — Chrome Extension uses classic script loading
+- No inline scripts in HTML — CSP requires all JS in external `.js` files
+- No CDN scripts — bundle all libraries locally for CSP compliance
+- Commit only when user explicitly asks
+- All UI text in **English**
 
-## Quy ước khi làm việc với Claude
+## Roadmap
 
-- Sau mỗi thay đổi, Claude sửa trực tiếp file trong thư mục này
-- Người dùng reload extension bằng nút 🔄 trong popup để lấy code mới
-- `storage.js` là file dùng chung — khi thêm function mới nhớ cập nhật cả popup.js và app.html nếu cần
-- Không dùng ES modules (`import/export`) vì Chrome Extension load script kiểu classic
+- [ ] Google Drive sync
+- [ ] Dark mode
+- [ ] Duplicate tab detector
+- [ ] AI-powered bookmark grouping
+- [ ] Browser history integration

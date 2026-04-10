@@ -1,135 +1,151 @@
-# 🗂️ naoTab
+# 🗂️ naoTab — Your Personal Tab Knowledge Base
 
-> Turn your browser tabs into a personal knowledge base — with context, tags, AI summaries, and a visual network graph.
+> 🇻🇳 [Xem phiên bản tiếng Việt](./README.vi.md)
 
-Chrome Extension (Manifest V3) built for developers who open too many tabs and forget why they opened them.
-
----
-
-## The Problem
-
-You open a GitHub repo, an article, a Stack Overflow answer. You *know* it's useful. You bookmark it. Three weeks later you open the bookmark — just a title, no context, no memory of why you saved it. Sound familiar?
-
-**naoTab** solves this by letting you save tabs *with context*: why you saved it, a summary of what it is, and tags so you can find it later. Everything is organized in a knowledge base you can search, filter, and visualize as a network graph.
+A Chrome Extension (Manifest V3) that turns your browser tabs into an organized, searchable **personal knowledge base** — no server, no backend, everything runs locally inside the extension.
 
 ---
 
-## Features
+## ✨ Features
 
-### Popup — Tab Manager
-- View all open tabs across all windows, grouped by window
-- Save any tab to your knowledge base with one click
-- Save an entire window at once
-- Close tabs/windows directly from the popup
-- Export all open tabs as plain text, JSON, Markdown, or CSV
-
-### Save Modal
-- Write a short note on *why* you're saving this tab
-- Add a summary of what the page is about
-- Tags are suggested automatically from the title and URL (offline)
-- Optional: one-click AI suggest for tags + summary (if AI is configured)
-
-### Knowledge Base (`app.html`)
-- Full-page app — no server needed, opens as a Chrome tab
-- **List view**: cards with title, URL, summary, reason, tags, and read status
-- **Graph view**: D3.js force-directed network — nodes are bookmarks, edges connect items sharing tags. Drag, zoom, double-click to open.
-- Filter by read status: `Unread`, `Reading`, `Revisit`, `Done`
-- Filter by tag
-- Full-text search across title, URL, reason, and tags
-- Edit any bookmark inline
-- Export / Import as JSON
-
-### AI Integration (optional, off by default)
-- Works with any OpenAI-compatible provider: OpenAI, Claude (Anthropic), Ollama (local), Groq, OpenRouter
-- When enabled: one-click **✨ AI Suggest** in the save modal fills in tags and summary automatically
-- API key is stored locally in `chrome.storage.local` — never sent anywhere except your chosen provider
-
-### Settings (`settings.html`)
-- Toggle AI on/off
-- One-click presets for popular providers
-- Test connection before saving
-- Choose which AI features to enable (tags, summary, or both)
+- **Save tabs with context** — add a summary, reason for saving, and tags to any tab
+- **Brain Visualize** — D3.js force-directed graph; nodes = bookmarks, edges = shared tags
+- **List view** — searchable card list with full-text search across title, URL, reason, and tags
+- **Node panel** — click any node or card to open a side panel with full details and inline editing
+- **Exclude tags from graph** — temporarily hide a tag's connections without deleting it, to declutter the graph
+- **AI integration** (optional, off by default) — auto-suggest tags and summaries via OpenAI, Claude, Groq, Ollama, OpenRouter, or any OpenAI-compatible provider
+- **AI Suggest in panel** — re-run AI on any saved bookmark directly from its detail panel
+- **SEO meta extraction** — reads page meta tags (og:description, keywords, author, etc.) on save; ~10× more token-efficient than scraping body text
+- **Save whole window** — bulk-save all tabs in a window, each with its own meta tags captured
+- **Obsidian export** — ZIP of `.md` files with YAML frontmatter, ready to open as an Obsidian vault
+- **JSON export / import** — full backup and restore
+- **100% local** — all data in `chrome.storage.local`, nothing leaves your machine except optional AI API calls
 
 ---
 
-## Installation
+## 📦 Installation
 
-> No build step required. Pure HTML/CSS/JS.
-
-1. Clone or download this repository
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable **Developer mode** (top right toggle)
-4. Click **Load unpacked** and select the project folder
-5. The extension icon appears in your Chrome toolbar
-
-To reload after code changes, click the **🔄** button inside the popup.
+1. Download or clone this repository
+2. Open `chrome://extensions/`
+3. Enable **Developer mode** (top right)
+4. Click **Load unpacked** → select this folder
+5. Pin the extension to your toolbar
 
 ---
 
-## Usage
+## 🚀 Usage
 
-**Saving a tab:**
-1. Click the extension icon to open the popup
-2. Click 💾 on any tab
-3. Write why you're saving it (optional but recommended)
-4. Confirm or edit the suggested tags
-5. Click **Save**
+### Saving tabs
+| Action | How |
+|---|---|
+| Save active tab | Click **💾 Tab this** in the toolbar |
+| Save any tab | Click **💾** next to a tab in the list |
+| Save whole window | Click **💾 Save window** — captures meta for every tab |
 
-**Browsing your knowledge base:**
-1. Click **📚 KB** in the popup header
-2. Use the sidebar to filter by status or tag
-3. Search with the top search bar
-4. Switch to graph view with the ⬡ button to see topic clusters visually
+Fill in summary (optional), reason (optional), and tags. If AI is enabled, click **✨ AI Suggest**.
 
-**Setting up AI:**
-1. Click **⚙️** in the popup header
-2. Enable AI and pick a provider preset
-3. Paste your API key and click **Test**
-4. Save — the **✨ AI Suggest** button will now appear when saving tabs
+### Brain Visualize (Graph view)
+- Default view when opening the Knowledge Base
+- **Click a node** → side panel opens; connected nodes highlight blue, others dim
+- **Double-click a node** → opens the URL in a new tab
+- **Click the background** → reset highlights, close panel
+- **Drag nodes** to rearrange the layout
+
+### Excluding a tag from the graph
+In the left sidebar, hover over any tag → click **✕** to exclude it from graph edges. The tag turns red with strikethrough. Click **↩** to restore it. Useful when a generic tag like `github` connects too many unrelated nodes.
+
+### Editing a bookmark
+Click any node or card → edit summary, reason, and tags in the side panel → **💾 Save**.
+
+### AI Suggest in the panel
+If AI is configured, the **✨ AI Suggest** button appears in the panel. It uses the saved page meta to re-generate tags and summary.
+
+### Settings
+Click **⚙️** → choose a provider preset → enter API key and model → **🧪 Test connection** → **💾 Save Settings**.
 
 ---
 
-## Data & Privacy
+## 🤖 AI Integration
 
-- All data is stored in `chrome.storage.local` on your machine
-- No external server, no analytics, no tracking
-- AI calls go directly from your browser to your chosen provider
-- Export your data anytime as a JSON file for backup or migration
+| Provider | API Format |
+|---|---|
+| OpenAI, Groq, Ollama, OpenRouter, custom | OpenAI-compatible (`/chat/completions`) |
+| Anthropic (Claude) | Native Anthropic API (`/messages`) |
+
+AI reads only page meta tags (~75 tokens) instead of full page body (~750 tokens) — **10× more efficient**.
+
+AI is **off by default**. Offline keyword + domain-based tag suggestions always work without any API key.
 
 ---
 
-## Project Structure
+## 🗄️ Data Schema
 
-```
-├── manifest.json     # Manifest V3 — permissions: tabs, storage, unlimitedStorage
-├── popup.html/css/js # Popup — tab list, save modal, export tools
-├── app.html          # Knowledge Base — list view, graph view, search, filter
-├── settings.html     # AI provider configuration
-├── storage.js        # Shared module: bookmarks CRUD, settings, AI call
-└── icons/            # Extension icons (16/48/128px)
+```json
+{
+  "id": "1712345678901",
+  "url": "https://...",
+  "title": "Page title",
+  "reason": "Why I saved this",
+  "summary": "AI or manual summary",
+  "tags": ["rust", "async"],
+  "favIconUrl": "https://...",
+  "pageMeta": {
+    "description": "...",
+    "ogTitle": "...",
+    "keywords": "...",
+    "author": "...",
+    "siteName": "...",
+    "ogType": "...",
+    "ogImage": "...",
+    "lang": "en",
+    "canonical": "https://..."
+  },
+  "savedAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}
 ```
 
 ---
 
-## Roadmap
+## 🔒 Permissions
 
-- [ ] Content script — let AI read actual page content for better summaries
-- [ ] Google Drive sync — auto backup/restore bookmarks
-- [ ] AI Group — auto-cluster bookmarks by topic
-- [ ] Duplicate tab detector
+| Permission | Reason |
+|---|---|
+| `tabs` | Read title, URL, and favicon of open tabs |
+| `storage` | Save bookmarks and settings locally |
+| `unlimitedStorage` | Remove the default 10MB cap |
+| `scripting` + `host_permissions` | Read page meta tags on demand |
+
+---
+
+## 🛠️ Development
+
+After editing any file, open the popup and click **🔄** to reload the extension.
+
+```
+naoTab/
+├── manifest.json              # Manifest V3
+├── popup.html / popup.css / popup.js   # Extension popup
+├── app.html / app.js          # Full-page Knowledge Base
+├── settings.html / settings.js # AI provider settings
+├── storage.js                 # Shared: bookmarks CRUD + settings + AI call
+├── d3.min.js                  # D3.js v7 (bundled locally — CSP)
+├── jszip.min.js               # JSZip (bundled locally — CSP)
+└── icons/                     # Extension icons
+```
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Google Drive sync
 - [ ] Dark mode
+- [ ] Duplicate tab detector
+- [ ] AI-powered bookmark grouping
+- [ ] Browser history integration
 
 ---
 
-## Tech Stack
+## 📄 License
 
-- **Manifest V3** Chrome Extension API
-- **D3.js v7** for the graph view
-- **chrome.storage.local** for persistence (unlimited storage)
-- No build tools, no frameworks, no dependencies to install
-
----
-
-## License
-
-MIT
+MIT — see [LICENSE](./LICENSE)

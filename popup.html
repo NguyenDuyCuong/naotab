@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -18,7 +18,7 @@
     </header>
 
     <div class="search-bar">
-      <input type="text" id="search-input" placeholder="Tìm kiếm tab..." />
+      <input type="text" id="search-input" placeholder="Search tabs..." />
       <span id="tab-count" class="tab-count-inline">0</span>
     </div>
 
@@ -54,24 +54,24 @@
       </div>
 
       <div class="modal-field">
-        <label>Summary <span class="label-hint" id="summary-hint">(AI sẽ điền nếu bật)</span></label>
-        <textarea id="modal-summary" placeholder="Tóm tắt ngắn về trang này..." rows="2"></textarea>
+        <label>Summary <span class="label-hint" id="summary-hint">(AI will fill if enabled)</span></label>
+        <textarea id="modal-summary" placeholder="Short summary of this page..." rows="2"></textarea>
       </div>
 
       <div class="modal-field">
-        <label>Tại sao bạn lưu cái này? <span class="label-hint">(optional)</span></label>
-        <textarea id="modal-reason" placeholder="vd: cách implement OAuth hay, cần đọc kỹ phần middleware..." rows="2"></textarea>
+        <label>Why did you save this? <span class="label-hint">(optional)</span></label>
+        <textarea id="modal-reason" placeholder="e.g. great OAuth implementation, need to read the middleware section..." rows="2"></textarea>
       </div>
 
       <div class="modal-field">
-        <label>Tags <span class="label-hint">(click để bỏ chọn, gõ để thêm)</span></label>
+        <label>Tags <span class="label-hint">(click to remove, type to add)</span></label>
         <div id="modal-tags" class="tags-container"></div>
-        <input type="text" id="modal-tag-input" placeholder="Thêm tag..." />
+        <input type="text" id="modal-tag-input" placeholder="Add tag..." />
       </div>
 
       <div class="modal-footer">
-        <button id="modal-cancel" class="btn-secondary">Huỷ</button>
-        <button id="modal-save" class="btn-primary">💾 Lưu</button>
+        <button id="modal-cancel" class="btn-secondary">Cancel</button>
+        <button id="modal-save" class="btn-primary">💾 Save</button>
       </div>
     </div>
   </div>
