@@ -4,6 +4,7 @@ const PRESETS = {
   ollama:     { url: 'http://localhost:11434/v1',         model: 'llama3.2' },
   groq:       { url: 'https://api.groq.com/openai/v1',   model: 'llama-3.1-8b-instant' },
   openrouter: { url: 'https://openrouter.ai/api/v1',     model: 'meta-llama/llama-3.1-8b-instruct:free' },
+  custom:     { url: '',                                  model: '' },
 };
 
 let settings = {};
@@ -40,8 +41,15 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const p = PRESETS[btn.dataset.provider];
     if (!p) return;
-    document.getElementById('ai-base-url').value = p.url;
-    document.getElementById('ai-model').value = p.model;
+    // Custom: chỉ clear field để người dùng tự điền, không overwrite
+    if (btn.dataset.provider !== 'custom') {
+      document.getElementById('ai-base-url').value = p.url;
+      document.getElementById('ai-model').value = p.model;
+    } else {
+      document.getElementById('ai-base-url').value = '';
+      document.getElementById('ai-model').value = '';
+      document.getElementById('ai-base-url').focus();
+    }
     document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   });
