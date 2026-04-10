@@ -181,15 +181,6 @@ function suggestTags(title, url) {
     }
   }
 
-  // Thêm domain làm tag nếu là GitHub repo
-  try {
-    const u = new URL(url);
-    if (u.hostname === 'github.com') {
-      const parts = u.pathname.split('/').filter(Boolean);
-      if (parts.length >= 2) matched.push(`gh:${parts[0]}/${parts[1]}`);
-    }
-  } catch (_) {}
-
   return [...new Set(matched)].slice(0, 6);
 }
 
