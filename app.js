@@ -311,6 +311,70 @@ document.getElementById('btn-export').addEventListener('click', async () => {
   showToast('✅ Đã xuất JSON!');
 });
 
+// Export Obsidian vault (ZIP of .md files)
+document.getElementById('btn-export-obsidian').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-export-obsidian');
+  btn.disabled = true;
+  btn.textContent = '⏳ Đang tạo...';
+
+  try {
+    const files = await exportObsidian();
+    if (files.length === 0) {
+      showToast('⚠️ Chưa có bookmark nào để export!');
+      return;
+    }
+
+    const zip = new JSZip();
+    const vault = zip.folder('naoTab-vault');
+
+    files.forEach(({ filename, content }) => {
+      vault.file(filename, content);
+    });
+
+    // Thêm README hướng dẫn import vào Obsidian
+    vault.file('_README.md', [
+      '# naoTab Vault',
+      '',
+      'Vault này được export từ [naoTab](https://github.com/bsquang/naotab).',
+      '',
+      '## Cách import vào Obsidian',
+      '',
+      '1. Giải nén file ZIP này',
+      '2. Mở Obsidian → **Open folder as vault**',
+      '3. Chọn thư mục `naoTab-vault` vừa giải nén',
+      '4. Cài plugin **Dataview** để query bookmarks theo tag, status, v.v.',
+      '',
+      '## Dataview query ví dụ',
+      '',
+      '````',
+      '```dataview',
+      'TABLE url, status, date_saved',
+      'FROM ""',
+      'WHERE status = "unread"',
+      'SORT date_saved DESC',
+      '```',
+      '````',
+      '',
+      `*Exported ${files.length} bookmarks on ${new Date().toLocaleDateString('vi-VN')}*`,
+    ].join('\n'));
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'naoTab-obsidian-' + new Date().toISOString().slice(0, 10) + '.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showToast('✅ Đã export ' + files.length + ' notes cho Obsidian!');
+  } catch (e) {
+    showToast('❌ Lỗi: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🟣 Export Obsidian';
+  }
+});
+
 document.getElementById('btn-import-trigger').addEventListener('click', () => {
   document.getElementById('btn-import').click();
 });

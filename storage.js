@@ -199,3 +199,88 @@ async function importJSON(jsonString) {
   await chrome.storage.local.set({ [STORAGE_KEY]: merged });
   return { imported: newOnes.length, skipped: incoming.length - newOnes.length };
 }
+
+// ─── Export Obsidian Vault ──────────────────────────────────────────────────────
+// Mỗi bookmark → 1 file .md với frontmatter chuẩn Obsidian
+// Trả về object { filename -> content } để caller tạo ZIP
+
+function bookmarkToObsidianMd(bookmark) {
+  // Sanitize filename: bỏ ký tự đặc biệt, giữ chữ + số + space + gạch
+  const safeName = (bookmark.title || 'Untitled')
+    .replace(/[\/\\:*?"<>|#^[\]]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+
+  const filename = safeName + '.md';
+
+  // Tags dạng Obsidian: mảng YAML
+  const tagsYaml = (bookmark.tags || []).length > 0
+    ? '  - ' + bookmark.tags.join('\n  - ')
+    : '';
+
+  // Status map sang tiếng Anh chuẩn
+  const statusMap = {
+    unread: 'unread',
+    reading: 'reading',
+    done: 'done',
+    revisit: 'revisit',
+  };
+
+  const savedAt = bookmark.savedAt
+    ? bookmark.savedAt.slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+
+  const updatedAt = bookmark.updatedAt
+    ? bookmark.updatedAt.slice(0, 10)
+    : savedAt;
+
+  // Build frontmatter theo chuẩn Obsidian Properties (YAML)
+  const frontmatter = [
+    '---',
+    `title: "${(bookmark.title || '').replace(/"/g, "'")}"`,
+    `url: "${bookmark.url}"`,
+    `tags:`,
+    tagsYaml,
+    `status: ${statusMap[bookmark.status] || 'unread'}`,
+    `date_saved: ${savedAt}`,
+    `date_updated: ${updatedAt}`,
+    `source: naoTab`,
+    '---',
+  ].filter(line => line !== '').join('\n');
+
+  // Body content
+  const parts = [];
+
+  // Title heading + link
+  parts.push(`# [${bookmark.title || 'Untitled'}](${bookmark.url})\n`);
+
+  // Summary block
+  if (bookmark.summary) {
+    parts.push(`## Summary\n\n${bookmark.summary}\n`);
+  }
+
+  // Why I saved this
+  if (bookmark.reason) {
+    parts.push(`## Why I saved this\n\n> ${bookmark.reason}\n`);
+  }
+
+  // Tags as wikilinks (Obsidian style)
+  if (bookmark.tags && bookmark.tags.length > 0) {
+    const tagLinks = bookmark.tags.map(t => `#${t}`).join(' ');
+    parts.push(`## Tags\n\n${tagLinks}\n`);
+  }
+
+  // Metadata footer
+  parts.push(`---\n*Saved via [naoTab](https://github.com/bsquang/naotab) on ${savedAt}*`);
+
+  const body = parts.join('\n');
+  const content = frontmatter + '\n\n' + body;
+
+  return { filename, content };
+}
+
+async function exportObsidian() {
+  const bookmarks = await getBookmarks();
+  return bookmarks.map(b => bookmarkToObsidianMd(b));
+}
