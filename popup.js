@@ -1,6 +1,7 @@
 let allTabs = [];
 let savedUrls = new Set(); // để biết tab nào đã lưu rồi
 let modalTab = null;       // tab đang được save
+let modalPageContent = ''; // nội dung trang đã clip được
 
 // ─── Load tabs ───────────────────────────────────────────────────────────────
 
@@ -202,9 +203,34 @@ document.getElementById('btn-export-csv').addEventListener('click', () => {
 
 let selectedTags = [];
 
+// Đọc nội dung trang qua scripting API
+async function getPageContent(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        // Loại bỏ script, style, nav, footer để lấy nội dung chính
+        const clone = document.body.cloneNode(true);
+        clone.querySelectorAll('script, style, nav, footer, header, aside, iframe').forEach(el => el.remove());
+        return (clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+      },
+    });
+    return results?.[0]?.result || '';
+  } catch (e) {
+    // Tab không inject được (chrome://, extension pages, v.v.) — bỏ qua
+    return '';
+  }
+}
+
 async function openSaveModal(tab) {
   modalTab = tab;
+  modalPageContent = '';
   selectedTags = suggestTags(tab.title, tab.url);
+
+  // Clip page content ngầm (không block UI)
+  getPageContent(tab.id).then(content => {
+    modalPageContent = content;
+  });
 
   // Điền thông tin
   document.getElementById('modal-title').textContent = tab.title;
@@ -287,7 +313,7 @@ document.getElementById('btn-ai-suggest').addEventListener('click', async () => 
   status.className = 'ai-status loading';
 
   try {
-    const result = await callAI(modalTab.title, modalTab.url);
+    const result = await callAI(modalTab.title, modalTab.url, modalPageContent);
     if (result) {
       const settings = await getSettings();
       if (settings.featTags && result.tags?.length) {

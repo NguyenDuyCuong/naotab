@@ -23,21 +23,26 @@ async function saveSettings(settings) {
 
 // ─── AI call ───────────────────────────────────────────────────────────────────
 
-async function callAI(title, url) {
+async function callAI(title, url, pageContent) {
   const settings = await getSettings();
   if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) return null;
 
   const isAnthropic = settings.aiBaseUrl.includes('anthropic.com');
 
+  // Nếu có page content, dùng để AI đọc thực sự — giới hạn ~3000 chars để tránh tốn token
+  const contentSection = pageContent
+    ? `\n\nPage content (first 3000 chars):\n"""\n${pageContent.slice(0, 3000)}\n"""`
+    : '';
+
   const prompt = `You are helping a developer organize their browser bookmarks.
 
 Given this webpage:
 Title: "${title}"
-URL: "${url}"
+URL: "${url}"${contentSection}
 
 Return a JSON object with:
 1. "tags": array of 3-6 short technical tags (lowercase, no spaces, use hyphens). Focus on: programming language, framework, topic, type of content.
-2. "summary": 1-2 sentences explaining what this page is about and why a developer would save it. Be specific and useful. Write in the same language as the title if non-English.
+2. "summary": 1-2 sentences explaining what this page is about and why a developer would save it. Be specific and useful.${pageContent ? ' Use the page content to write an accurate summary.' : ''} Write in the same language as the title if non-English.
 
 Respond with ONLY the JSON object, no explanation.
 Example: {"tags":["rust","performance","async"],"summary":"Deep dive into async runtime internals in Rust, useful for understanding how tokio scheduler works under the hood."}`;
