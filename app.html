@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knowledge Base — Tab Explorer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      background: #f8f9fa;
+      color: #202124;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Sidebar + main layout ── */
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      background: #1a73e8;
+      color: white;
+      flex-shrink: 0;
+    }
+    .topbar h1 { font-size: 16px; font-weight: 600; flex: 1; }
+    .topbar-actions { display: flex; gap: 8px; }
+    .topbar button {
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.4);
+      background: rgba(255,255,255,0.15);
+      color: white;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .topbar button:hover { background: rgba(255,255,255,0.3); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 220px;
+      background: white;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .sidebar-section { padding: 12px 14px 8px; }
+    .sidebar-section h3 {
+      font-size: 10px;
+      font-weight: 700;
+      color: #80868b;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 6px;
+    }
+
+    .filter-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #3c4043;
+      transition: background 0.12s;
+      user-select: none;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .filter-btn:hover { background: #f1f3f4; }
+    .filter-btn.active { background: #e8f0fe; color: #1a73e8; font-weight: 600; }
+    .filter-count {
+      margin-left: auto;
+      font-size: 10px;
+      background: #f1f3f4;
+      color: #5f6368;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+    .filter-btn.active .filter-count { background: #aecbfa; color: #1557b0; }
+
+    .tag-cloud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px 0;
+    }
+    .tag-pill {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      cursor: pointer;
+      background: #f1f3f4;
+      color: #3c4043;
+      border: 1px solid transparent;
+      transition: all 0.12s;
+      user-select: none;
+    }
+    .tag-pill:hover { border-color: #1a73e8; color: #1a73e8; }
+    .tag-pill.active { background: #e8f0fe; color: #1a73e8; border-color: #aecbfa; font-weight: 600; }
+
+    /* ── Main content ── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .main-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+      flex-shrink: 0;
+    }
+
+    .main-toolbar input[type="text"] {
+      flex: 1;
+      padding: 6px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 20px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .main-toolbar input[type="text"]:focus { border-color: #1a73e8; }
+
+    .view-toggle { display: flex; gap: 4px; }
+    .view-btn {
+      padding: 5px 10px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 13px;
+      color: #5f6368;
+      transition: all 0.12s;
+    }
+    .view-btn.active { background: #e8f0fe; border-color: #1a73e8; color: #1a73e8; }
+
+    .result-count { font-size: 12px; color: #80868b; white-space: nowrap; }
+
+    /* ── List view ── */
+    #list-view { flex: 1; overflow-y: auto; padding: 12px 16px; }
+
+    .bookmark-card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      transition: box-shadow 0.15s;
+      cursor: default;
+    }
+    .bookmark-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+    .card-header { display: flex; align-items: flex-start; gap: 10px; }
+    .card-favicon { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; }
+    .card-favicon img { width: 18px; height: 18px; object-fit: contain; }
+    .card-main { flex: 1; min-width: 0; }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a73e8;
+      cursor: pointer;
+      text-decoration: none;
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-title:hover { text-decoration: underline; }
+
+    .card-url {
+      font-size: 11px;
+      color: #80868b;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .card-summary {
+      font-size: 12px;
+      color: #3c4043;
+      margin-top: 7px;
+      line-height: 1.5;
+      border-left: 3px solid #1a73e8;
+      padding-left: 8px;
+    }
+
+    .card-reason {
+      font-size: 12px;
+      color: #3c4043;
+      margin-top: 6px;
+      line-height: 1.5;
+      font-style: italic;
+      border-left: 3px solid #fbbc04;
+      padding-left: 8px;
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .card-tags { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+
+    .card-tag {
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 500;
+      background: #e8f0fe;
+      color: #1557b0;
+      cursor: pointer;
+    }
+    .card-tag:hover { background: #aecbfa; }
+
+    .card-date { font-size: 10px; color: #9aa0a6; white-space: nowrap; }
+
+    .card-actions { display: flex; gap: 4px; }
+    .card-actions button {
+      padding: 2px 8px;
+      font-size: 11px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      color: #5f6368;
+      transition: all 0.12s;
+    }
+    .card-actions button:hover { background: #f1f3f4; }
+    .card-actions .btn-delete:hover { background: #fce8e6; border-color: #d93025; color: #d93025; }
+
+    .status-select {
+      padding: 2px 6px;
+      font-size: 11px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      color: #3c4043;
+      outline: none;
+    }
+    .status-unread { border-color: #fbbc04; color: #b06000; background: #fef9e7; }
+    .status-reading { border-color: #1a73e8; color: #1a73e8; background: #e8f0fe; }
+    .status-done { border-color: #34a853; color: #1e7e34; background: #e6f4ea; }
+    .status-revisit { border-color: #e37400; color: #b05900; background: #fef0e6; }
+
+    /* ── Graph view ── */
+    #graph-view {
+      flex: 1;
+      overflow: hidden;
+      display: none;
+      position: relative;
+      background: #fafafa;
+    }
+    #graph-view svg { width: 100%; height: 100%; }
+
+    .graph-tooltip {
+      position: absolute;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      max-width: 280px;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      display: none;
+    }
+    .graph-tooltip strong { display: block; margin-bottom: 4px; color: #202124; font-size: 12px; }
+    .graph-tooltip .tt-url { color: #80868b; font-size: 10px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .graph-tooltip .tt-reason { color: #5f6368; font-style: italic; margin-bottom: 6px; }
+    .graph-tooltip .tt-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+    .graph-tooltip .tt-tag { padding: 1px 6px; border-radius: 8px; font-size: 10px; background: #e8f0fe; color: #1557b0; }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #80868b;
+      gap: 8px;
+      padding: 40px;
+    }
+    .empty-state .emoji { font-size: 40px; }
+    .empty-state p { font-size: 14px; text-align: center; line-height: 1.6; }
+
+    /* Edit modal */
+    .edit-modal {
+      position: fixed; inset: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .edit-modal.hidden { display: none; }
+    .edit-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.4); }
+    .edit-modal-box {
+      position: relative; background: white; border-radius: 10px;
+      padding: 20px; width: 460px; max-width: 95%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .edit-modal-box h2 { font-size: 15px; font-weight: 600; }
+    .edit-field { display: flex; flex-direction: column; gap: 5px; }
+    .edit-field label { font-size: 11px; font-weight: 600; color: #5f6368; text-transform: uppercase; letter-spacing: 0.4px; }
+    .edit-field textarea, .edit-field input {
+      padding: 7px 10px; border: 1px solid #dadce0; border-radius: 6px;
+      font-size: 13px; font-family: inherit; outline: none; resize: none;
+    }
+    .edit-field textarea:focus, .edit-field input:focus { border-color: #1a73e8; }
+    .edit-modal-footer { display: flex; justify-content: flex-end; gap: 8px; }
+    .btn-primary { padding: 7px 18px; background: #1a73e8; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-secondary { padding: 7px 18px; background: white; color: #5f6368; border: 1px solid #dadce0; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .btn-secondary:hover { background: #f1f3f4; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      background: #323232; color: white; padding: 8px 18px;
+      border-radius: 20px; font-size: 12px; font-weight: 500; z-index: 9999;
+      white-space: nowrap;
+    }
+    #toast.hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <h1>📚 Knowledge Base</h1>
+  <div class="topbar-actions">
+    <button id="btn-export">📤 Export JSON</button>
+    <button id="btn-import-trigger">📥 Import JSON</button>
+    <input type="file" id="btn-import" accept=".json" style="display:none" />
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3>Trạng thái</h3>
+      <button class="filter-btn active" data-status="all">📋 Tất cả <span class="filter-count" id="count-all">0</span></button>
+      <button class="filter-btn" data-status="unread">🔵 Chưa đọc <span class="filter-count" id="count-unread">0</span></button>
+      <button class="filter-btn" data-status="reading">📖 Đang đọc <span class="filter-count" id="count-reading">0</span></button>
+      <button class="filter-btn" data-status="revisit">🔁 Cần xem lại <span class="filter-count" id="count-revisit">0</span></button>
+      <button class="filter-btn" data-status="done">✅ Xong <span class="filter-count" id="count-done">0</span></button>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Tags</h3>
+      <div id="tag-cloud" class="tag-cloud"></div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="main-toolbar">
+      <input type="text" id="search-input" placeholder="🔍 Tìm theo title, URL, lý do, tag..." />
+      <span id="result-count" class="result-count"></span>
+      <div class="view-toggle">
+        <button class="view-btn active" id="btn-list-view" title="List view">☰</button>
+        <button class="view-btn" id="btn-graph-view" title="Graph view">⬡</button>
+      </div>
+    </div>
+
+    <!-- List view -->
+    <div id="list-view"></div>
+
+    <!-- Graph view -->
+    <div id="graph-view">
+      <svg id="graph-svg"></svg>
+      <div id="graph-tooltip" class="graph-tooltip"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div id="edit-modal" class="edit-modal hidden">
+  <div class="edit-modal-backdrop"></div>
+  <div class="edit-modal-box">
+    <h2>✏️ Chỉnh sửa bookmark</h2>
+    <div class="edit-field">
+      <label>Summary</label>
+      <textarea id="edit-summary" rows="2"></textarea>
+    </div>
+    <div class="edit-field">
+      <label>Lý do lưu</label>
+      <textarea id="edit-reason" rows="2"></textarea>
+    </div>
+    <div class="edit-field">
+      <label>Tags (phân cách bằng dấu phẩy)</label>
+      <input type="text" id="edit-tags" />
+    </div>
+    <div class="edit-modal-footer">
+      <button class="btn-secondary" id="edit-cancel">Huỷ</button>
+      <button class="btn-primary" id="edit-save">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="storage.js"></script>
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let allBookmarks = [];
+let activeStatus = 'all';
+let activeTag = null;
+let searchQuery = '';
+let currentView = 'list';
+let editingId = null;
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+async function init() {
+  allBookmarks = await getBookmarks();
+  renderAll();
+}
+
+function renderAll() {
+  updateSidebar();
+  renderView();
+}
+
+// ── Filter logic ───────────────────────────────────────────────────────────────
+function getFiltered() {
+  return allBookmarks.filter(b => {
+    if (activeStatus !== 'all' && b.status !== activeStatus) return false;
+    if (activeTag && !b.tags.includes(activeTag)) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const inTitle = b.title.toLowerCase().includes(q);
+      const inUrl = b.url.toLowerCase().includes(q);
+      const inReason = (b.reason || '').toLowerCase().includes(q);
+      const inTags = b.tags.some(t => t.toLowerCase().includes(q));
+      if (!inTitle && !inUrl && !inReason && !inTags) return false;
+    }
+    return true;
+  });
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────────
+function updateSidebar() {
+  const counts = { all: allBookmarks.length, unread: 0, reading: 0, revisit: 0, done: 0 };
+  allBookmarks.forEach(b => { if (counts[b.status] !== undefined) counts[b.status]++; });
+  Object.entries(counts).forEach(([k, v]) => {
+    const el = document.getElementById(`count-${k}`);
+    if (el) el.textContent = v;
+  });
+
+  // Tag cloud
+  const tagCount = {};
+  allBookmarks.forEach(b => b.tags.forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }));
+  const sorted = Object.entries(tagCount).sort((a, b) => b[1] - a[1]);
+  const cloud = document.getElementById('tag-cloud');
+  cloud.innerHTML = sorted.map(([tag, cnt]) =>
+    `<span class="tag-pill ${activeTag === tag ? 'active' : ''}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)} <small>${cnt}</small></span>`
+  ).join('');
+  cloud.querySelectorAll('.tag-pill').forEach(el => {
+    el.addEventListener('click', () => {
+      activeTag = activeTag === el.dataset.tag ? null : el.dataset.tag;
+      renderAll();
+    });
+  });
+}
+
+// ── Views ──────────────────────────────────────────────────────────────────────
+function renderView() {
+  const filtered = getFiltered();
+  document.getElementById('result-count').textContent = `${filtered.length} bookmark`;
+  if (currentView === 'list') renderList(filtered);
+  else renderGraph(filtered);
+}
+
+// ── List view ──────────────────────────────────────────────────────────────────
+function renderList(bookmarks) {
+  const container = document.getElementById('list-view');
+
+  if (bookmarks.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <span class="emoji">${allBookmarks.length === 0 ? '📭' : '🔍'}</span>
+        <p>${allBookmarks.length === 0
+          ? 'Chưa có bookmark nào.\nMở popup extension và click 💾 trên tab muốn lưu!'
+          : 'Không tìm thấy kết quả nào.'}</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = bookmarks.map(b => {
+    const favicon = b.favIconUrl && b.favIconUrl.startsWith('http')
+      ? `<img src="${escapeHtml(b.favIconUrl)}" onerror="this.style.display='none'" />`
+      : '🌐';
+    const tags = (b.tags || []).map(t =>
+      `<span class="card-tag" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`
+    ).join('');
+    const date = new Date(b.savedAt).toLocaleDateString('vi-VN');
+    const statusClass = `status-${b.status}`;
+
+    return `
+      <div class="bookmark-card" data-id="${b.id}">
+        <div class="card-header">
+          <div class="card-favicon">${favicon}</div>
+          <div class="card-main">
+            <a class="card-title" href="${escapeHtml(b.url)}" target="_blank" title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</a>
+            <div class="card-url">${escapeHtml(b.url)}</div>
+          </div>
+        </div>
+        ${b.summary ? `<div class="card-summary">${escapeHtml(b.summary)}</div>` : ''}
+        ${b.reason ? `<div class="card-reason">${escapeHtml(b.reason)}</div>` : ''}
+        <div class="card-footer">
+          <div class="card-tags">${tags}</div>
+          <span class="card-date">${date}</span>
+          <select class="status-select ${statusClass}" data-id="${b.id}">
+            <option value="unread" ${b.status === 'unread' ? 'selected' : ''}>🔵 Chưa đọc</option>
+            <option value="reading" ${b.status === 'reading' ? 'selected' : ''}>📖 Đang đọc</option>
+            <option value="revisit" ${b.status === 'revisit' ? 'selected' : ''}>🔁 Xem lại</option>
+            <option value="done" ${b.status === 'done' ? 'selected' : ''}>✅ Xong</option>
+          </select>
+          <div class="card-actions">
+            <button class="btn-edit" data-id="${b.id}" title="Chỉnh sửa">✏️</button>
+            <button class="btn-delete" data-id="${b.id}" title="Xoá">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Events
+  container.querySelectorAll('.card-tag').forEach(el => {
+    el.addEventListener('click', () => {
+      activeTag = el.dataset.tag;
+      renderAll();
+    });
+  });
+
+  container.querySelectorAll('.status-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      await updateBookmark(sel.dataset.id, { status: sel.value });
+      allBookmarks = await getBookmarks();
+      renderAll();
+    });
+  });
+
+  container.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+  });
+
+  container.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Xoá bookmark này?')) return;
+      await deleteBookmark(btn.dataset.id);
+      allBookmarks = await getBookmarks();
+      renderAll();
+      showToast('🗑️ Đã xoá');
+    });
+  });
+}
+
+// ── Graph view ─────────────────────────────────────────────────────────────────
+function renderGraph(bookmarks) {
+  const svg = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+
+  if (bookmarks.length === 0) return;
+
+  const w = document.getElementById('graph-view').clientWidth;
+  const h = document.getElementById('graph-view').clientHeight;
+
+  // Build nodes and links (shared tags = edge)
+  const nodes = bookmarks.map(b => ({ ...b, id: b.id }));
+  const links = [];
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const shared = nodes[i].tags.filter(t => nodes[j].tags.includes(t));
+      if (shared.length > 0) {
+        links.push({ source: nodes[i].id, target: nodes[j].id, shared });
+      }
+    }
+  }
+
+  const simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(120))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(w / 2, h / 2))
+    .force('collision', d3.forceCollide(40));
+
+  const g = svg.append('g');
+
+  // Zoom
+  svg.call(d3.zoom().scaleExtent([0.2, 3]).on('zoom', e => g.attr('transform', e.transform)));
+
+  // Links
+  const link = g.append('g').selectAll('line').data(links).join('line')
+    .attr('stroke', '#dadce0').attr('stroke-width', 1.5).attr('stroke-opacity', 0.6);
+
+  // Nodes
+  const nodeColor = { unread: '#1a73e8', reading: '#fbbc04', done: '#34a853', revisit: '#e37400' };
+
+  const node = g.append('g').selectAll('g').data(nodes).join('g')
+    .attr('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+  node.append('circle')
+    .attr('r', 18)
+    .attr('fill', d => nodeColor[d.status] || '#1a73e8')
+    .attr('fill-opacity', 0.15)
+    .attr('stroke', d => nodeColor[d.status] || '#1a73e8')
+    .attr('stroke-width', 2);
+
+  // Favicon or emoji
+  node.append('text')
+    .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
+    .attr('font-size', '14px').text('🔗');
+
+  // Title label
+  node.append('text')
+    .attr('text-anchor', 'middle').attr('y', 28)
+    .attr('font-size', '10px').attr('fill', '#3c4043')
+    .text(d => d.title.length > 22 ? d.title.slice(0, 22) + '…' : d.title);
+
+  // Tooltip
+  const tooltip = document.getElementById('graph-tooltip');
+  node
+    .on('mouseover', (e, d) => {
+      tooltip.style.display = 'block';
+      tooltip.innerHTML = `
+        <strong>${escapeHtml(d.title)}</strong>
+        <div class="tt-url">${escapeHtml(d.url)}</div>
+        ${d.reason ? `<div class="tt-reason">"${escapeHtml(d.reason)}"</div>` : ''}
+        <div class="tt-tags">${d.tags.map(t => `<span class="tt-tag">${escapeHtml(t)}</span>`).join('')}</div>`;
+    })
+    .on('mousemove', (e) => {
+      tooltip.style.left = (e.offsetX + 14) + 'px';
+      tooltip.style.top = (e.offsetY - 10) + 'px';
+    })
+    .on('mouseout', () => { tooltip.style.display = 'none'; })
+    .on('dblclick', (e, d) => { window.open(d.url, '_blank'); });
+
+  simulation.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+}
+
+// ── Edit modal ─────────────────────────────────────────────────────────────────
+function openEditModal(id) {
+  const b = allBookmarks.find(x => x.id === id);
+  if (!b) return;
+  editingId = id;
+  document.getElementById('edit-summary').value = b.summary || '';
+  document.getElementById('edit-reason').value = b.reason || '';
+  document.getElementById('edit-tags').value = (b.tags || []).join(', ');
+  document.getElementById('edit-modal').classList.remove('hidden');
+  document.getElementById('edit-reason').focus();
+}
+
+document.getElementById('edit-cancel').addEventListener('click', () => {
+  document.getElementById('edit-modal').classList.add('hidden');
+});
+document.getElementById('edit-modal').addEventListener('click', e => {
+  if (e.target.classList.contains('edit-modal-backdrop'))
+    document.getElementById('edit-modal').classList.add('hidden');
+});
+document.getElementById('edit-save').addEventListener('click', async () => {
+  if (!editingId) return;
+  const summary = document.getElementById('edit-summary').value.trim();
+  const reason = document.getElementById('edit-reason').value.trim();
+  const tags = document.getElementById('edit-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  await updateBookmark(editingId, { summary, reason, tags });
+  allBookmarks = await getBookmarks();
+  document.getElementById('edit-modal').classList.add('hidden');
+  renderAll();
+  showToast('✅ Đã cập nhật!');
+});
+
+// ── Toolbar events ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeStatus = btn.dataset.status;
+    renderView();
+  });
+});
+
+document.getElementById('search-input').addEventListener('input', e => {
+  searchQuery = e.target.value;
+  renderView();
+});
+
+document.getElementById('btn-list-view').addEventListener('click', () => {
+  currentView = 'list';
+  document.getElementById('btn-list-view').classList.add('active');
+  document.getElementById('btn-graph-view').classList.remove('active');
+  document.getElementById('list-view').style.display = '';
+  document.getElementById('graph-view').style.display = 'none';
+  renderView();
+});
+
+document.getElementById('btn-graph-view').addEventListener('click', () => {
+  currentView = 'graph';
+  document.getElementById('btn-graph-view').classList.add('active');
+  document.getElementById('btn-list-view').classList.remove('active');
+  document.getElementById('list-view').style.display = 'none';
+  document.getElementById('graph-view').style.display = 'block';
+  renderView();
+});
+
+// Export
+document.getElementById('btn-export').addEventListener('click', async () => {
+  const json = await exportJSON();
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `tab-explorer-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ Đã xuất JSON!');
+});
+
+// Import
+document.getElementById('btn-import-trigger').addEventListener('click', () => {
+  document.getElementById('btn-import').click();
+});
+document.getElementById('btn-import').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  try {
+    const result = await importJSON(text);
+    allBookmarks = await getBookmarks();
+    renderAll();
+    showToast(`✅ Đã import ${result.imported} bookmark (bỏ qua ${result.skipped} trùng)`);
+  } catch (err) {
+    showToast('❌ File JSON không hợp lệ');
+  }
+  e.target.value = '';
+});
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.add('hidden'), 2500);
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Init list view mặc định
+document.getElementById('graph-view').style.display = 'none';
+init();
+</script>
+</body>
+</html>

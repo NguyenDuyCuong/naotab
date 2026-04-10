@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — Tab Explorer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      background: #f8f9fa;
+      color: #202124;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Header */
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .page-header h1 { font-size: 20px; font-weight: 700; color: #202124; }
+    .back-btn {
+      padding: 5px 12px;
+      font-size: 12px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      color: #5f6368;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+    .back-btn:hover { background: #f1f3f4; color: #202124; }
+
+    /* Card */
+    .card {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #f1f3f4;
+    }
+    .card-title h2 { font-size: 15px; font-weight: 600; }
+    .card-title p { font-size: 12px; color: #5f6368; margin-top: 3px; }
+
+    .card-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+    .card-body.disabled { opacity: 0.45; pointer-events: none; }
+
+    /* Toggle */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .toggle-label { font-size: 14px; font-weight: 500; }
+    .toggle-desc { font-size: 12px; color: #5f6368; margin-top: 2px; }
+
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #dadce0;
+      border-radius: 24px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle input:checked + .toggle-slider { background: #1a73e8; }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+    /* Form field */
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #5f6368;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .field input, .field select {
+      padding: 8px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 7px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      background: white;
+      transition: border-color 0.2s;
+    }
+    .field input:focus, .field select:focus { border-color: #1a73e8; }
+    .field input[type="password"] { letter-spacing: 2px; }
+    .field-hint { font-size: 11px; color: #9aa0a6; margin-top: 2px; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Provider presets */
+    .provider-presets {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .preset-btn {
+      padding: 4px 11px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid #dadce0;
+      border-radius: 20px;
+      background: white;
+      cursor: pointer;
+      color: #3c4043;
+      transition: all 0.12s;
+    }
+    .preset-btn:hover { border-color: #1a73e8; color: #1a73e8; background: #e8f0fe; }
+    .preset-btn.active { border-color: #1a73e8; color: #1a73e8; background: #e8f0fe; font-weight: 600; }
+
+    /* Test button */
+    .test-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-test {
+      padding: 7px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid #1a73e8;
+      border-radius: 6px;
+      background: white;
+      color: #1a73e8;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-test:hover { background: #e8f0fe; }
+    .btn-test:disabled { opacity: 0.5; cursor: not-allowed; }
+    #test-result { font-size: 12px; }
+    .test-ok { color: #34a853; font-weight: 500; }
+    .test-err { color: #d93025; }
+
+    /* Save button */
+    .save-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 4px;
+    }
+    .btn-save {
+      padding: 9px 24px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 7px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-save:hover { background: #1557b0; }
+
+    /* Info box */
+    .info-box {
+      background: #e8f0fe;
+      border: 1px solid #aecbfa;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 12px;
+      color: #1557b0;
+      line-height: 1.6;
+    }
+    .info-box strong { font-weight: 600; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 20px; left: 50%;
+      transform: translateX(-50%);
+      background: #323232; color: white;
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 12px; font-weight: 500;
+      z-index: 9999; white-space: nowrap;
+    }
+    #toast.hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <a href="#" class="back-btn" id="btn-back">← Quay lại</a>
+    <h1>⚙️ Settings</h1>
+  </div>
+
+  <!-- AI Toggle card -->
+  <div class="card">
+    <div class="card-title">
+      <div>
+        <h2>✨ AI Integration</h2>
+        <p>Tự động suggest tags và summary khi lưu bookmark</p>
+      </div>
+    </div>
+    <div class="card-body" style="gap:12px">
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Bật AI</div>
+          <div class="toggle-desc">Khi tắt: bạn tự nhập tags và summary (mặc định)</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="ai-enabled" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Config card -->
+  <div class="card" id="ai-config-card">
+    <div class="card-title">
+      <div>
+        <h2>🔧 Cấu hình AI Provider</h2>
+        <p>Hỗ trợ bất kỳ provider nào compatible với OpenAI API format</p>
+      </div>
+    </div>
+    <div class="card-body" id="ai-config-body">
+
+      <div class="field">
+        <label>Provider nhanh</label>
+        <div class="provider-presets">
+          <button class="preset-btn" data-provider="openai">OpenAI</button>
+          <button class="preset-btn" data-provider="claude">Claude (Anthropic)</button>
+          <button class="preset-btn" data-provider="ollama">Ollama (local)</button>
+          <button class="preset-btn" data-provider="groq">Groq</button>
+          <button class="preset-btn" data-provider="openrouter">OpenRouter</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>API Base URL</label>
+        <input type="text" id="ai-base-url" placeholder="https://api.openai.com/v1" />
+        <div class="field-hint">Endpoint gốc, không bao gồm /chat/completions</div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>API Key</label>
+          <input type="password" id="ai-api-key" placeholder="sk-..." autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>Model</label>
+          <input type="text" id="ai-model" placeholder="gpt-4o-mini" />
+        </div>
+      </div>
+
+      <div class="info-box">
+        <strong>Lưu ý bảo mật:</strong> API key được lưu trong <code>chrome.storage.local</code> trên máy bạn, không gửi đi đâu ngoài provider bạn chọn.
+      </div>
+
+      <div class="test-row">
+        <button class="btn-test" id="btn-test">🧪 Test kết nối</button>
+        <span id="test-result"></span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- AI Features card -->
+  <div class="card" id="ai-features-card">
+    <div class="card-title">
+      <div>
+        <h2>🎛️ Tính năng AI</h2>
+        <p>Chọn tính năng nào bạn muốn dùng AI</p>
+      </div>
+    </div>
+    <div class="card-body" id="ai-features-body">
+
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Auto-suggest tags khi save</div>
+          <div class="toggle-desc">AI đọc title + URL → gợi ý tags kỹ thuật</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="feat-tags" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Auto-generate summary khi save</div>
+          <div class="toggle-desc">AI tóm tắt trang trong 1-2 câu để bạn nhớ context</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="feat-summary" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="save-row">
+    <button class="btn-save" id="btn-save">💾 Lưu Settings</button>
+  </div>
+
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="storage.js"></script>
+<script>
+const PRESETS = {
+  openai:     { url: 'https://api.openai.com/v1',                      model: 'gpt-4o-mini' },
+  claude:     { url: 'https://api.anthropic.com/v1',                   model: 'claude-haiku-4-5-20251001' },
+  ollama:     { url: 'http://localhost:11434/v1',                       model: 'llama3.2' },
+  groq:       { url: 'https://api.groq.com/openai/v1',                 model: 'llama-3.1-8b-instant' },
+  openrouter: { url: 'https://openrouter.ai/api/v1',                   model: 'meta-llama/llama-3.1-8b-instruct:free' },
+};
+
+let settings = {};
+
+async function loadSettings() {
+  settings = await getSettings();
+  document.getElementById('ai-enabled').checked = settings.aiEnabled || false;
+  document.getElementById('ai-base-url').value = settings.aiBaseUrl || '';
+  document.getElementById('ai-api-key').value = settings.aiApiKey || '';
+  document.getElementById('ai-model').value = settings.aiModel || '';
+  document.getElementById('feat-tags').checked = settings.featTags !== false;
+  document.getElementById('feat-summary').checked = settings.featSummary !== false;
+  updateConfigVisibility();
+}
+
+function updateConfigVisibility() {
+  const enabled = document.getElementById('ai-enabled').checked;
+  document.getElementById('ai-config-body').classList.toggle('disabled', !enabled);
+  document.getElementById('ai-features-body').classList.toggle('disabled', !enabled);
+}
+
+document.getElementById('ai-enabled').addEventListener('change', updateConfigVisibility);
+
+// Provider presets
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = PRESETS[btn.dataset.provider];
+    if (!p) return;
+    document.getElementById('ai-base-url').value = p.url;
+    document.getElementById('ai-model').value = p.model;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// Test connection
+document.getElementById('btn-test').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-test');
+  const result = document.getElementById('test-result');
+  const baseUrl = document.getElementById('ai-base-url').value.trim();
+  const apiKey = document.getElementById('ai-api-key').value.trim();
+  const model = document.getElementById('ai-model').value.trim();
+
+  if (!baseUrl || !model) {
+    result.innerHTML = '<span class="test-err">⚠️ Điền URL và Model trước</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  result.innerHTML = '⏳ Đang kiểm tra...';
+
+  try {
+    const isAnthropic = baseUrl.includes('anthropic.com');
+    const headers = { 'Content-Type': 'application/json' };
+    if (isAnthropic) {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const endpoint = isAnthropic
+      ? `${baseUrl}/messages`
+      : `${baseUrl}/chat/completions`;
+
+    const body = isAnthropic
+      ? { model, max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] }
+      : { model, max_tokens: 10, messages: [{ role: 'user', content: 'hi' }] };
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      result.innerHTML = '<span class="test-ok">✅ Kết nối thành công!</span>';
+    } else {
+      const err = await res.json().catch(() => ({}));
+      result.innerHTML = `<span class="test-err">❌ ${res.status}: ${err?.error?.message || res.statusText}</span>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<span class="test-err">❌ ${e.message}</span>`;
+  }
+
+  btn.disabled = false;
+});
+
+// Save
+document.getElementById('btn-save').addEventListener('click', async () => {
+  const newSettings = {
+    aiEnabled: document.getElementById('ai-enabled').checked,
+    aiBaseUrl: document.getElementById('ai-base-url').value.trim(),
+    aiApiKey: document.getElementById('ai-api-key').value.trim(),
+    aiModel: document.getElementById('ai-model').value.trim(),
+    featTags: document.getElementById('feat-tags').checked,
+    featSummary: document.getElementById('feat-summary').checked,
+  };
+  await saveSettings(newSettings);
+  settings = newSettings;
+  showToast('✅ Đã lưu settings!');
+});
+
+document.getElementById('btn-back').addEventListener('click', (e) => {
+  e.preventDefault();
+  window.close();
+});
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.add('hidden'), 2500);
+}
+
+loadSettings();
+</script>
+</body>
+</html>

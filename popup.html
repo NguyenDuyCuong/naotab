@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tab Explorer</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🗂️ Tab Explorer</h1>
+      <div class="header-actions">
+        <button id="btn-open-kb" title="Mở Knowledge Base">📚 KB</button>
+        <button id="btn-open-settings" title="Settings">⚙️</button>
+        <button id="btn-reload-ext" title="Reload extension">🔄</button>
+      </div>
+    </header>
+
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="Tìm kiếm tab..." />
+      <span id="tab-count" class="tab-count-inline">0</span>
+    </div>
+
+    <div class="toolbar">
+      <button id="btn-copy-all" title="Copy tất cả dạng text">📋 Copy</button>
+      <button id="btn-copy-json">{ } JSON</button>
+      <button id="btn-copy-markdown">🔗 Markdown</button>
+      <button id="btn-export-csv">📥 CSV</button>
+    </div>
+
+    <div id="tab-list" class="tab-list"></div>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <!-- Save Modal -->
+  <div id="save-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-box">
+      <div class="modal-header">
+        <div id="modal-favicon" class="modal-favicon">🌐</div>
+        <div class="modal-title-wrap">
+          <div id="modal-title" class="modal-title"></div>
+          <div id="modal-url" class="modal-url"></div>
+        </div>
+      </div>
+
+      <!-- AI suggest button — chỉ hiện khi AI bật -->
+      <div id="modal-ai-row" class="modal-ai-row hidden">
+        <button id="btn-ai-suggest" class="btn-ai">✨ AI Suggest</button>
+        <span id="ai-suggest-status" class="ai-status"></span>
+      </div>
+
+      <div class="modal-field">
+        <label>Summary <span class="label-hint" id="summary-hint">(AI sẽ điền nếu bật)</span></label>
+        <textarea id="modal-summary" placeholder="Tóm tắt ngắn về trang này..." rows="2"></textarea>
+      </div>
+
+      <div class="modal-field">
+        <label>Tại sao bạn lưu cái này?</label>
+        <textarea id="modal-reason" placeholder="vd: cách implement OAuth hay, cần đọc kỹ phần middleware..." rows="2"></textarea>
+      </div>
+
+      <div class="modal-field">
+        <label>Tags <span class="label-hint">(click để bỏ chọn, gõ để thêm)</span></label>
+        <div id="modal-tags" class="tags-container"></div>
+        <input type="text" id="modal-tag-input" placeholder="Thêm tag..." />
+      </div>
+
+      <div class="modal-footer">
+        <button id="modal-cancel" class="btn-secondary">Huỷ</button>
+        <button id="modal-save" class="btn-primary">💾 Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
