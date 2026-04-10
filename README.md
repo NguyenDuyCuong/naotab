@@ -6,6 +6,10 @@ A Chrome Extension (Manifest V3) that turns your browser tabs into an organized,
 
 ---
 
+![naoTab Overview](./assets/screenshot-overview.png)
+
+---
+
 ## ✨ Features
 
 - **Save tabs with context** — add a summary, reason for saving, and tags to any tab

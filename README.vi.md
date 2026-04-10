@@ -6,6 +6,10 @@ Chrome Extension (Manifest V3) biến các tab trình duyệt thành một **kho
 
 ---
 
+![naoTab Overview](./assets/screenshot-overview.png)
+
+---
+
 ## ✨ Tính năng
 
 - **Lưu tab kèm context** — thêm summary, lý do lưu và tags cho bất kỳ tab nào
