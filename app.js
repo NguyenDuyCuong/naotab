@@ -5,6 +5,7 @@ let activeTag = null;
 let searchQuery = '';
 let currentView = 'graph';
 let editingId = null;
+let panelId = null; // id bookmark đang hiển thị trong panel
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
@@ -174,10 +175,10 @@ function renderGraph(bookmarks) {
   }
 
   const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(120))
-    .force('charge', d3.forceManyBody().strength(-200))
+    .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+    .force('charge', d3.forceManyBody().strength(-120))
     .force('center', d3.forceCenter(w / 2, h / 2))
-    .force('collision', d3.forceCollide(40));
+    .force('collision', d3.forceCollide(32));
 
   const g = svg.append('g');
 
@@ -212,6 +213,15 @@ function renderGraph(bookmarks) {
     .text(d => d.title.length > 22 ? d.title.slice(0, 22) + '…' : d.title);
 
   const tooltip = document.getElementById('graph-tooltip');
+
+  // Build adjacency set for quick lookup
+  const neighborMap = {};
+  nodes.forEach(n => { neighborMap[n.id] = new Set(); });
+  links.forEach(l => {
+    neighborMap[l.source.id || l.source]?.add(l.target.id || l.target);
+    neighborMap[l.target.id || l.target]?.add(l.source.id || l.source);
+  });
+
   node
     .on('mouseover', (e, d) => {
       tooltip.style.display = 'block';
@@ -226,7 +236,30 @@ function renderGraph(bookmarks) {
       tooltip.style.top = (e.offsetY - 10) + 'px';
     })
     .on('mouseout', () => { tooltip.style.display = 'none'; })
-    .on('dblclick', (e, d) => { window.open(d.url, '_blank'); });
+    .on('click', (e, d) => {
+      e.stopPropagation();
+      // Highlight: dim nodes/links không liên quan, highlight những cái liên quan
+      const neighbors = neighborMap[d.id] || new Set();
+      node.selectAll('circle')
+        .attr('fill-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 0.9 : 0.06)
+        .attr('stroke-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.2);
+      node.selectAll('text')
+        .attr('opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.2);
+      link
+        .attr('stroke-opacity', l => (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.05)
+        .attr('stroke', l => (l.source.id === d.id || l.target.id === d.id) ? '#1a73e8' : '#dadce0')
+        .attr('stroke-width', l => (l.source.id === d.id || l.target.id === d.id) ? 2.5 : 1.5);
+      openNodePanel(d.id);
+    })
+    .on('dblclick', (e, d) => { e.stopPropagation(); window.open(d.url, '_blank'); });
+
+  // Click nền SVG → reset highlight
+  svg.on('click', () => {
+    node.selectAll('circle').attr('fill-opacity', 0.15).attr('stroke-opacity', 1);
+    node.selectAll('text').attr('opacity', 1);
+    link.attr('stroke-opacity', 0.6).attr('stroke', '#dadce0').attr('stroke-width', 1.5);
+    closeNodePanel();
+  });
 
   simulation.on('tick', () => {
     link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
@@ -391,6 +424,74 @@ document.getElementById('btn-import').addEventListener('change', async (e) => {
     showToast('❌ File JSON không hợp lệ');
   }
   e.target.value = '';
+});
+
+// ── Node detail panel ──────────────────────────────────────────────────────────
+function openNodePanel(id) {
+  const b = allBookmarks.find(x => x.id === id);
+  if (!b) return;
+  panelId = id;
+
+  const faviconEl = document.getElementById('panel-favicon');
+  if (b.favIconUrl && b.favIconUrl.startsWith('http')) {
+    faviconEl.innerHTML = '<img src="' + escapeHtml(b.favIconUrl) + '" onerror="this.textContent=\'🌐\'" />';
+  } else {
+    faviconEl.textContent = '🌐';
+  }
+
+  document.getElementById('panel-title').textContent = b.title;
+  document.getElementById('panel-url').textContent = b.url;
+  document.getElementById('panel-status').value = b.status || 'unread';
+  document.getElementById('panel-summary').value = b.summary || '';
+  document.getElementById('panel-reason').value = b.reason || '';
+  document.getElementById('panel-tags').value = (b.tags || []).join(', ');
+
+  document.getElementById('node-panel').classList.add('open');
+}
+
+function closeNodePanel() {
+  document.getElementById('node-panel').classList.remove('open');
+  panelId = null;
+}
+
+document.getElementById('panel-close').addEventListener('click', closeNodePanel);
+
+document.getElementById('panel-open-url').addEventListener('click', () => {
+  const b = allBookmarks.find(x => x.id === panelId);
+  if (b) window.open(b.url, '_blank');
+});
+
+document.getElementById('panel-save').addEventListener('click', async () => {
+  if (!panelId) return;
+  const status = document.getElementById('panel-status').value;
+  const summary = document.getElementById('panel-summary').value.trim();
+  const reason = document.getElementById('panel-reason').value.trim();
+  const tags = document.getElementById('panel-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  await updateBookmark(panelId, { status, summary, reason, tags });
+  allBookmarks = await getBookmarks();
+  renderAll();
+  showToast('✅ Đã cập nhật!');
+});
+
+document.getElementById('panel-delete').addEventListener('click', async () => {
+  if (!panelId) return;
+  if (!confirm('Xoá bookmark này?')) return;
+  await deleteBookmark(panelId);
+  allBookmarks = await getBookmarks();
+  closeNodePanel();
+  renderAll();
+  showToast('🗑️ Đã xoá');
+});
+
+// ── Delete all ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-delete-all').addEventListener('click', async () => {
+  if (allBookmarks.length === 0) { showToast('⚠️ Chưa có bookmark nào!'); return; }
+  if (!confirm('Xoá tất cả ' + allBookmarks.length + ' bookmark? Không thể hoàn tác!')) return;
+  await chrome.storage.local.remove('tab_bookmarks');
+  allBookmarks = [];
+  closeNodePanel();
+  renderAll();
+  showToast('🗑️ Đã xoá tất cả!');
 });
 
 // ── Toast ──────────────────────────────────────────────────────────────────────

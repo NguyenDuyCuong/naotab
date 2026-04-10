@@ -345,6 +345,130 @@
     .btn-secondary { padding: 7px 18px; background: white; color: #5f6368; border: 1px solid #dadce0; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
     .btn-secondary:hover { background: #f1f3f4; }
 
+    /* ── Node detail panel ── */
+    #node-panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: 340px;
+      background: white;
+      border-left: 1px solid #e0e0e0;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.12);
+      display: flex;
+      flex-direction: column;
+      z-index: 500;
+      transform: translateX(100%);
+      transition: transform 0.22s ease;
+    }
+    #node-panel.open { transform: translateX(0); }
+
+    .panel-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 16px;
+      border-bottom: 1px solid #f0f0f0;
+      flex-shrink: 0;
+    }
+    .panel-favicon { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+    .panel-favicon img { width: 20px; height: 20px; object-fit: contain; }
+    .panel-title-block { flex: 1; min-width: 0; }
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #202124;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .panel-url {
+      font-size: 11px;
+      color: #80868b;
+      margin-top: 3px;
+      word-break: break-all;
+    }
+    .panel-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      color: #80868b;
+      padding: 0 4px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .panel-close:hover { color: #202124; }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .panel-field { display: flex; flex-direction: column; gap: 5px; }
+    .panel-field label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #80868b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .panel-field textarea, .panel-field input, .panel-field select {
+      padding: 7px 10px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      resize: none;
+      background: #fafafa;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .panel-field textarea:focus,
+    .panel-field input:focus,
+    .panel-field select:focus { border-color: #1a73e8; background: white; }
+
+    .panel-footer {
+      padding: 12px 16px;
+      border-top: 1px solid #f0f0f0;
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .panel-footer .btn-open-url {
+      padding: 7px 12px;
+      background: white;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #5f6368;
+    }
+    .panel-footer .btn-open-url:hover { background: #f1f3f4; }
+    .panel-footer .btn-panel-delete {
+      padding: 7px 12px;
+      background: white;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #d93025;
+    }
+    .panel-footer .btn-panel-delete:hover { background: #fce8e6; border-color: #d93025; }
+    .panel-footer .btn-panel-save {
+      flex: 1;
+      padding: 7px 12px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .panel-footer .btn-panel-save:hover { background: #1557b0; }
+
     /* Toast */
     #toast {
       position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -365,6 +489,7 @@
     <button id="btn-export-obsidian">🟣 Export Obsidian</button>
     <button id="btn-import-trigger">📥 Import JSON</button>
     <input type="file" id="btn-import" accept=".json" style="display:none" />
+    <button id="btn-delete-all" style="background:rgba(217,48,37,0.2);border-color:rgba(217,48,37,0.5);">🗑️ Xoá tất cả</button>
   </div>
 </div>
 
@@ -430,6 +555,46 @@
       <button class="btn-secondary" id="edit-cancel">Huỷ</button>
       <button class="btn-primary" id="edit-save">Lưu</button>
     </div>
+  </div>
+</div>
+
+<!-- Node detail panel -->
+<div id="node-panel">
+  <div class="panel-header">
+    <div class="panel-favicon" id="panel-favicon">🌐</div>
+    <div class="panel-title-block">
+      <div class="panel-title" id="panel-title"></div>
+      <div class="panel-url" id="panel-url"></div>
+    </div>
+    <button class="panel-close" id="panel-close">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="panel-field">
+      <label>Trạng thái</label>
+      <select id="panel-status">
+        <option value="unread">🔵 Chưa đọc</option>
+        <option value="reading">📖 Đang đọc</option>
+        <option value="revisit">🔁 Cần xem lại</option>
+        <option value="done">✅ Xong</option>
+      </select>
+    </div>
+    <div class="panel-field">
+      <label>Summary</label>
+      <textarea id="panel-summary" rows="3" placeholder="Tóm tắt ngắn về trang này..."></textarea>
+    </div>
+    <div class="panel-field">
+      <label>Lý do lưu</label>
+      <textarea id="panel-reason" rows="2" placeholder="Tại sao bạn lưu cái này?"></textarea>
+    </div>
+    <div class="panel-field">
+      <label>Tags (phân cách bằng dấu phẩy)</label>
+      <input type="text" id="panel-tags" placeholder="vd: react, typescript, tutorial" />
+    </div>
+  </div>
+  <div class="panel-footer">
+    <button class="btn-open-url" id="panel-open-url">↗ Mở</button>
+    <button class="btn-panel-delete" id="panel-delete">🗑️</button>
+    <button class="btn-panel-save" id="panel-save">💾 Lưu</button>
   </div>
 </div>
 
