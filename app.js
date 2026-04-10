@@ -3,7 +3,7 @@ let allBookmarks = [];
 let activeStatus = 'all';
 let activeTag = null;
 let searchQuery = '';
-let currentView = 'list';
+let currentView = 'graph';
 let editingId = null;
 
 // ── Init ───────────────────────────────────────────────────────────────────────
@@ -342,6 +342,9 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Init
-document.getElementById('graph-view').style.display = 'none';
+// Init — default graph view
+document.getElementById('list-view').style.display = 'none';
+document.getElementById('graph-view').style.display = 'block';
+document.getElementById('btn-graph-view').classList.add('active');
+document.getElementById('btn-list-view').classList.remove('active');
 init();
