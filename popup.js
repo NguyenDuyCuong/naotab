@@ -203,16 +203,43 @@ document.getElementById('btn-export-csv').addEventListener('click', () => {
 
 let selectedTags = [];
 
-// Đọc nội dung trang qua scripting API
+// Đọc meta tags SEO từ trang — tiết kiệm token hơn body text rất nhiều
 async function getPageContent(tabId) {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
-        // Loại bỏ script, style, nav, footer để lấy nội dung chính
-        const clone = document.body.cloneNode(true);
-        clone.querySelectorAll('script, style, nav, footer, header, aside, iframe').forEach(el => el.remove());
-        return (clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+        const getMeta = (selectors) => {
+          for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            const val = el?.getAttribute('content') || el?.getAttribute('value');
+            if (val && val.trim()) return val.trim();
+          }
+          return '';
+        };
+
+        const title = document.title || '';
+        const description = getMeta([
+          'meta[name="description"]',
+          'meta[property="og:description"]',
+          'meta[name="twitter:description"]',
+        ]);
+        const ogTitle = getMeta(['meta[property="og:title"]', 'meta[name="twitter:title"]']);
+        const keywords = getMeta(['meta[name="keywords"]']);
+        const ogType = getMeta(['meta[property="og:type"]']);
+        const author = getMeta(['meta[name="author"]', 'meta[property="article:author"]']);
+        const siteName = getMeta(['meta[property="og:site_name"]']);
+
+        // Gộp thành 1 đoạn text ngắn gọn cho AI
+        const parts = [];
+        if (ogTitle && ogTitle !== title) parts.push(`Title: ${ogTitle}`);
+        if (description) parts.push(`Description: ${description}`);
+        if (keywords) parts.push(`Keywords: ${keywords}`);
+        if (ogType) parts.push(`Type: ${ogType}`);
+        if (author) parts.push(`Author: ${author}`);
+        if (siteName) parts.push(`Site: ${siteName}`);
+
+        return parts.join('\n');
       },
     });
     return results?.[0]?.result || '';

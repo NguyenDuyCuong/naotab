@@ -29,9 +29,9 @@ async function callAI(title, url, pageContent) {
 
   const isAnthropic = settings.aiBaseUrl.includes('anthropic.com');
 
-  // Nếu có page content, dùng để AI đọc thực sự — giới hạn ~3000 chars để tránh tốn token
+  // Dùng meta tags SEO (~300 chars) thay vì body text (~3000 chars) — tiết kiệm ~10x token
   const contentSection = pageContent
-    ? `\n\nPage content (first 3000 chars):\n"""\n${pageContent.slice(0, 3000)}\n"""`
+    ? `\n\nPage metadata:\n"""\n${pageContent.slice(0, 500)}\n"""`
     : '';
 
   const prompt = `You are helping a developer organize their browser bookmarks.
