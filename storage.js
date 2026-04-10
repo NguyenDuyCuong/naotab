@@ -47,6 +47,7 @@ Return a JSON object with:
 Respond with ONLY the JSON object, no explanation.
 Example: {"tags":["rust","performance","async"],"summary":"Deep dive into async runtime internals in Rust, useful for understanding how tokio scheduler works under the hood."}`;
 
+  const isOpenRouter = settings.aiBaseUrl.includes('openrouter.ai');
   const headers = { 'Content-Type': 'application/json' };
   let endpoint, body;
 
@@ -61,6 +62,11 @@ Example: {"tags":["rust","performance","async"],"summary":"Deep dive into async 
     };
   } else {
     headers['Authorization'] = `Bearer ${settings.aiApiKey}`;
+    // OpenRouter yêu cầu thêm 2 header này
+    if (isOpenRouter) {
+      headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
+      headers['X-Title'] = 'naoTab';
+    }
     endpoint = `${settings.aiBaseUrl}/chat/completions`;
     body = {
       model: settings.aiModel,

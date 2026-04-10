@@ -75,12 +75,18 @@ document.getElementById('btn-test').addEventListener('click', async () => {
 
   try {
     const isAnthropic = baseUrl.includes('anthropic.com');
+    const isOpenRouter = baseUrl.includes('openrouter.ai');
     const headers = { 'Content-Type': 'application/json' };
     if (isAnthropic) {
       headers['x-api-key'] = apiKey;
       headers['anthropic-version'] = '2023-06-01';
     } else {
       headers['Authorization'] = 'Bearer ' + apiKey;
+    }
+    // OpenRouter yêu cầu thêm 2 header này
+    if (isOpenRouter) {
+      headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
+      headers['X-Title'] = 'naoTab';
     }
 
     const endpoint = isAnthropic
