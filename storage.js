@@ -1,139 +1,60 @@
-// storage.js — module quản lý bookmarks + settings trong chrome.storage.local
+// storage.js — Bookmark CRUD + Settings
+// Depends on: schema.js (migrateBookmark, createBookmark, SETTINGS_DEFAULTS)
+//
+// This file intentionally contains ONLY:
+//   - Storage keys
+//   - Settings read/write
+//   - Bookmark CRUD (get/save/update/delete)
+//
+// AI logic  → ai.js
+// Export    → export.js
+// Sync      → sync/*.js (future)
 
-const STORAGE_KEY = 'tab_bookmarks';
+const STORAGE_KEY  = 'tab_bookmarks';
 const SETTINGS_KEY = 'tab_explorer_settings';
 
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
 async function getSettings() {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  return result[SETTINGS_KEY] || {
-    aiEnabled: false,
-    aiBaseUrl: '',
-    aiApiKey: '',
-    aiModel: '',
-    featTags: true,
-    featSummary: true,
-  };
+  return { ...SETTINGS_DEFAULTS, ...(result[SETTINGS_KEY] || {}) };
 }
 
 async function saveSettings(settings) {
   await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
 }
 
-// ─── AI call ───────────────────────────────────────────────────────────────────
+// ─── Bookmarks CRUD ────────────────────────────────────────────────────────────
 
-async function callAI(title, url, pageContent) {
-  const settings = await getSettings();
-  if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) return null;
-
-  const isAnthropic = settings.aiBaseUrl.includes('anthropic.com');
-
-  // Dùng meta tags SEO (~300 chars) thay vì body text (~3000 chars) — tiết kiệm ~10x token
-  const contentSection = pageContent
-    ? `\n\nPage metadata:\n"""\n${pageContent.slice(0, 500)}\n"""`
-    : '';
-
-  const prompt = `You are helping a developer organize their browser bookmarks.
-
-Given this webpage:
-Title: "${title}"
-URL: "${url}"${contentSection}
-
-Return a JSON object with:
-1. "tags": array of 3-6 short technical tags (lowercase, no spaces, use hyphens). Focus on: programming language, framework, topic, type of content.
-2. "summary": 1-2 sentences explaining what this page is about and why a developer would save it. Be specific and useful.${pageContent ? ' Use the page content to write an accurate summary.' : ''} Write in the same language as the title if non-English.
-
-Respond with ONLY the JSON object, no explanation.
-Example: {"tags":["rust","performance","async"],"summary":"Deep dive into async runtime internals in Rust, useful for understanding how tokio scheduler works under the hood."}`;
-
-  const isOpenRouter = settings.aiBaseUrl.includes('openrouter.ai');
-  const headers = { 'Content-Type': 'application/json' };
-  let endpoint, body;
-
-  if (isAnthropic) {
-    headers['x-api-key'] = settings.aiApiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    endpoint = `${settings.aiBaseUrl}/messages`;
-    body = {
-      model: settings.aiModel,
-      max_tokens: 256,
-      messages: [{ role: 'user', content: prompt }],
-    };
-  } else {
-    headers['Authorization'] = `Bearer ${settings.aiApiKey}`;
-    // OpenRouter yêu cầu thêm 2 header này
-    if (isOpenRouter) {
-      headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
-      headers['X-Title'] = 'naoTab';
-    }
-    endpoint = `${settings.aiBaseUrl}/chat/completions`;
-    body = {
-      model: settings.aiModel,
-      max_tokens: 256,
-      messages: [{ role: 'user', content: prompt }],
-    };
-  }
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-
-  const data = await res.json();
-  const text = isAnthropic
-    ? data.content?.[0]?.text
-    : data.choices?.[0]?.message?.content;
-
-  // Parse JSON từ response (đề phòng model bọc trong markdown)
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Invalid AI response');
-  return JSON.parse(jsonMatch[0]);
-}
-
-// Đọc tất cả bookmarks
+/**
+ * getBookmarks()
+ * Reads all bookmarks and runs migration on each — safe for old data.
+ */
 async function getBookmarks() {
   const result = await chrome.storage.local.get(STORAGE_KEY);
-  return result[STORAGE_KEY] || [];
+  return (result[STORAGE_KEY] || []).map(migrateBookmark);
 }
 
-// Lưu một bookmark mới (schedules Drive sync after write)
-async function saveBookmark({ url, title, reason, summary, tags, favIconUrl, pageMeta }) {
+/**
+ * saveBookmark(fields)
+ * Creates and persists a new bookmark. Deduplicates by URL.
+ * Returns { duplicate: true, bookmark } or { duplicate: false, bookmark }.
+ */
+async function saveBookmark(fields) {
   const bookmarks = await getBookmarks();
-
-  // Không lưu trùng URL
-  const exists = bookmarks.find(b => b.url === url);
+  const exists = bookmarks.find(b => b.url === fields.url);
   if (exists) return { duplicate: true, bookmark: exists };
 
-  // Lọc bỏ _aiText trước khi lưu
-  let cleanMeta;
-  if (pageMeta) {
-    const { _aiText, ...rest } = pageMeta;
-    cleanMeta = Object.fromEntries(Object.entries(rest).filter(([, v]) => v));
-  }
-
-  const bookmark = {
-    id: Date.now().toString(),
-    url,
-    title,
-    reason,
-    summary,
-    tags,
-    favIconUrl: favIconUrl || '',
-    pageMeta: cleanMeta || null,
-    savedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  bookmarks.unshift(bookmark); // mới nhất lên đầu
+  const bookmark = createBookmark(fields);
+  bookmarks.unshift(bookmark);
   await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks });
   return { duplicate: false, bookmark };
 }
 
-// Cập nhật bookmark (status, tags, reason, ...)
+/**
+ * updateBookmark(id, changes)
+ * Partial update — merges changes into existing bookmark.
+ */
 async function updateBookmark(id, changes) {
   const bookmarks = await getBookmarks();
   const idx = bookmarks.findIndex(b => b.id === id);
@@ -143,194 +64,10 @@ async function updateBookmark(id, changes) {
   return true;
 }
 
-// Xóa bookmark
+/**
+ * deleteBookmark(id)
+ */
 async function deleteBookmark(id) {
   const bookmarks = await getBookmarks();
-  const filtered = bookmarks.filter(b => b.id !== id);
-  await chrome.storage.local.set({ [STORAGE_KEY]: filtered });
+  await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks.filter(b => b.id !== id) });
 }
-
-// Suggest tags từ title + URL (offline, không cần API)
-function suggestTags(title, url) {
-  const text = (title + ' ' + url).toLowerCase();
-  const tagMap = {
-    // Languages
-    'javascript': ['javascript', 'js', '.js', 'node', 'npm', 'webpack', 'vite', 'eslint'],
-    'typescript': ['typescript', '.ts', 'tsx'],
-    'python': ['python', 'pip', 'django', 'flask', 'fastapi', 'pandas', 'numpy'],
-    'rust': ['rust', 'cargo', 'crates.io', 'rustlang'],
-    'go': ['golang', '/go/', 'goroutine', 'gopher'],
-    'java': ['java', 'spring', 'maven', 'gradle'],
-    'css': ['css', 'tailwind', 'sass', 'styled-component', 'postcss'],
-    // Topics
-    'ai': ['openai', 'anthropic', 'claude', 'gpt', 'llm', 'machine learning', 'ml', 'neural', 'pytorch', 'tensorflow', 'hugging'],
-    'database': ['postgres', 'mysql', 'sqlite', 'mongodb', 'redis', 'supabase', 'prisma', 'sql'],
-    'devops': ['docker', 'kubernetes', 'k8s', 'ci/cd', 'github action', 'terraform', 'ansible', 'aws', 'gcp', 'azure'],
-    'security': ['auth', 'oauth', 'jwt', 'ssl', 'tls', 'vulnerability', 'cve', 'xss', 'csrf'],
-    'performance': ['performance', 'benchmark', 'profil', 'optimize', 'speed', 'latency'],
-    'api': ['api', 'rest', 'graphql', 'grpc', 'openapi', 'swagger', 'webhook'],
-    'frontend': ['react', 'vue', 'angular', 'svelte', 'nextjs', 'nuxt', 'remix'],
-    'backend': ['express', 'fastify', 'actix', 'gin', 'laravel', 'rails'],
-    'testing': ['test', 'jest', 'vitest', 'cypress', 'playwright', 'unit test', 'e2e'],
-    'tools': ['cli', 'terminal', 'vscode', 'neovim', 'tmux', 'git', 'github', 'gitlab'],
-    'architecture': ['architecture', 'microservice', 'monolith', 'design pattern', 'ddd', 'clean architecture', 'solid'],
-    'open-source': ['github.com', 'gitlab.com', 'open source', 'opensource', 'mit license'],
-    'tutorial': ['tutorial', 'guide', 'how to', 'getting started', 'introduction', 'beginner', 'learn'],
-    'paper': ['arxiv', 'paper', 'research', 'academic', 'doi.org'],
-    'video': ['youtube.com', 'youtu.be', 'twitch', 'loom'],
-    'docs': ['docs.', 'documentation', 'reference', 'spec', 'rfc'],
-  };
-
-  const matched = [];
-  for (const [tag, keywords] of Object.entries(tagMap)) {
-    if (keywords.some(kw => text.includes(kw))) {
-      matched.push(tag);
-    }
-  }
-
-  // Add well-known site name as a tag (before slicing, so it's always included)
-  const siteMap = {
-    'github.com': 'github',
-    'stackoverflow.com': 'stackoverflow',
-    'medium.com': 'medium',
-    'dev.to': 'devto',
-    'hackernews': 'hackernews',
-    'news.ycombinator.com': 'hackernews',
-    'reddit.com': 'reddit',
-    'youtube.com': 'youtube',
-    'youtu.be': 'youtube',
-    'npmjs.com': 'npm',
-    'pypi.org': 'pypi',
-    'crates.io': 'crates-io',
-    'hub.docker.com': 'dockerhub',
-    'vercel.com': 'vercel',
-    'netlify.com': 'netlify',
-    'cloudflare.com': 'cloudflare',
-    'linear.app': 'linear',
-    'notion.so': 'notion',
-    'figma.com': 'figma',
-    'twitter.com': 'twitter',
-    'x.com': 'twitter',
-    'linkedin.com': 'linkedin',
-    'producthunt.com': 'producthunt',
-    'hashnode.com': 'hashnode',
-    'substack.com': 'substack',
-  };
-
-  try {
-    const hostname = new URL(url).hostname.replace('www.', '');
-    for (const [domain, tag] of Object.entries(siteMap)) {
-      if (hostname === domain || hostname.endsWith('.' + domain)) {
-        matched.unshift(tag); // site tag goes first
-        break;
-      }
-    }
-  } catch (_) {}
-
-  return [...new Set(matched)].slice(0, 6);
-}
-
-// Export toàn bộ dạng JSON string
-async function exportJSON() {
-  const bookmarks = await getBookmarks();
-  return JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), bookmarks }, null, 2);
-}
-
-// Import từ JSON string (merge, không xóa cái cũ)
-async function importJSON(jsonString) {
-  const data = JSON.parse(jsonString);
-  const incoming = data.bookmarks || data; // hỗ trợ cả array thô
-  const existing = await getBookmarks();
-  const existingUrls = new Set(existing.map(b => b.url));
-  const newOnes = incoming.filter(b => !existingUrls.has(b.url));
-  const merged = [...newOnes, ...existing];
-  await chrome.storage.local.set({ [STORAGE_KEY]: merged });
-  return { imported: newOnes.length, skipped: incoming.length - newOnes.length };
-}
-
-// ─── Export Obsidian Vault ──────────────────────────────────────────────────────
-// Mỗi bookmark → 1 file .md với frontmatter chuẩn Obsidian
-// Trả về object { filename -> content } để caller tạo ZIP
-
-function bookmarkToObsidianMd(bookmark) {
-  // Sanitize filename: bỏ ký tự đặc biệt, giữ chữ + số + space + gạch
-  const safeName = (bookmark.title || 'Untitled')
-    .replace(/[\/\\:*?"<>|#^[\]]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80);
-
-  const filename = safeName + '.md';
-
-  // Tags dạng Obsidian: mảng YAML
-  const tagsYaml = (bookmark.tags || []).length > 0
-    ? '  - ' + bookmark.tags.join('\n  - ')
-    : '';
-
-  // Status map sang tiếng Anh chuẩn
-  const statusMap = {
-    unread: 'unread',
-    reading: 'reading',
-    done: 'done',
-    revisit: 'revisit',
-  };
-
-  const savedAt = bookmark.savedAt
-    ? bookmark.savedAt.slice(0, 10)
-    : new Date().toISOString().slice(0, 10);
-
-  const updatedAt = bookmark.updatedAt
-    ? bookmark.updatedAt.slice(0, 10)
-    : savedAt;
-
-  // Build frontmatter theo chuẩn Obsidian Properties (YAML)
-  const frontmatter = [
-    '---',
-    `title: "${(bookmark.title || '').replace(/"/g, "'")}"`,
-    `url: "${bookmark.url}"`,
-    `tags:`,
-    tagsYaml,
-    `status: ${statusMap[bookmark.status] || 'unread'}`,
-    `date_saved: ${savedAt}`,
-    `date_updated: ${updatedAt}`,
-    `source: naoTab`,
-    '---',
-  ].filter(line => line !== '').join('\n');
-
-  // Body content
-  const parts = [];
-
-  // Title heading + link
-  parts.push(`# [${bookmark.title || 'Untitled'}](${bookmark.url})\n`);
-
-  // Summary block
-  if (bookmark.summary) {
-    parts.push(`## Summary\n\n${bookmark.summary}\n`);
-  }
-
-  // Why I saved this
-  if (bookmark.reason) {
-    parts.push(`## Why I saved this\n\n> ${bookmark.reason}\n`);
-  }
-
-  // Tags as wikilinks (Obsidian style)
-  if (bookmark.tags && bookmark.tags.length > 0) {
-    const tagLinks = bookmark.tags.map(t => `#${t}`).join(' ');
-    parts.push(`## Tags\n\n${tagLinks}\n`);
-  }
-
-  // Metadata footer
-  parts.push(`---\n*Saved via [naoTab](https://github.com/bsquang/naotab) on ${savedAt}*`);
-
-  const body = parts.join('\n');
-  const content = frontmatter + '\n\n' + body;
-
-  return { filename, content };
-}
-
-async function exportObsidian() {
-  const bookmarks = await getBookmarks();
-  return bookmarks.map(b => bookmarkToObsidianMd(b));
-}
-
-
