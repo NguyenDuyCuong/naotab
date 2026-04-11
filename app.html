@@ -435,6 +435,60 @@
     .panel-ai-status { font-size: 11px; color: #5f6368; }
     .panel-ai-status.error { color: #d93025; }
 
+    /* Connected nodes section */
+    .panel-connected {
+      border-top: 1px solid #f0f0f0;
+      padding-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .panel-connected-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #80868b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .connected-node-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.12s;
+      border: 1px solid transparent;
+    }
+    .connected-node-item:hover {
+      background: #f0f4ff;
+      border-color: #d2e3fc;
+    }
+    .connected-node-favicon {
+      width: 14px; height: 14px; flex-shrink: 0;
+      font-size: 12px; line-height: 1;
+    }
+    .connected-node-favicon img { width: 14px; height: 14px; object-fit: contain; }
+    .connected-node-title {
+      font-size: 11px;
+      color: #202124;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .connected-node-tags {
+      display: flex; gap: 3px; flex-shrink: 0;
+    }
+    .connected-node-tag {
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 8px;
+      background: #e8f0fe;
+      color: #1557b0;
+    }
+
     .panel-meta {
       border-top: 1px solid #f0f0f0;
       padding-top: 12px;
@@ -642,6 +696,7 @@
       <input type="text" id="panel-tags" placeholder="e.g. react, typescript, tutorial" />
     </div>
 
+    <div class="panel-connected" id="panel-connected"></div>
     <div class="panel-meta" id="panel-meta"></div>
   </div>
   <div class="panel-footer">

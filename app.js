@@ -509,6 +509,44 @@ function openNodePanel(id) {
         ).join('')
       : '');
 
+  // Render connected nodes (shares ≥1 non-excluded tag with this bookmark)
+  const connectedEl = document.getElementById('panel-connected');
+  const connected = allBookmarks
+    .filter(x => x.id !== b.id)
+    .map(x => {
+      const sharedTags = (b.tags || []).filter(t => (x.tags || []).includes(t) && !excludedTags.has(t));
+      return { bookmark: x, sharedTags };
+    })
+    .filter(x => x.sharedTags.length > 0)
+    .sort((a, b) => b.sharedTags.length - a.sharedTags.length);
+
+  if (connected.length === 0) {
+    connectedEl.innerHTML = '';
+  } else {
+    connectedEl.innerHTML =
+      '<div class="panel-connected-label">🔗 Connected (' + connected.length + ')</div>' +
+      connected.map(({ bookmark: c, sharedTags }) => {
+        const favicon = c.favIconUrl && c.favIconUrl.startsWith('http')
+          ? '<img src="' + escapeHtml(c.favIconUrl) + '" onerror="this.style.display=\'none\'" />'
+          : '🌐';
+        const tagPills = sharedTags.slice(0, 3).map(t =>
+          '<span class="connected-node-tag">' + escapeHtml(t) + '</span>'
+        ).join('');
+        return (
+          '<div class="connected-node-item" data-id="' + c.id + '" title="' + escapeHtml(c.title) + '">' +
+            '<span class="connected-node-favicon">' + favicon + '</span>' +
+            '<span class="connected-node-title">' + escapeHtml(c.title) + '</span>' +
+            '<span class="connected-node-tags">' + tagPills + '</span>' +
+          '</div>'
+        );
+      }).join('');
+
+    // Click connected item → navigate to that node
+    connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
+      el.addEventListener('click', () => openNodePanel(el.dataset.id));
+    });
+  }
+
   document.getElementById('node-panel').classList.add('open');
 }
 
