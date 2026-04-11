@@ -79,12 +79,41 @@ function updateSidebar() {
   });
 }
 
+// ── Sidebar node list ──────────────────────────────────────────────────────────
+function updateSidebarNodeList() {
+  const filtered = getFiltered();
+  const list = document.getElementById('sidebar-node-list');
+  const count = document.getElementById('sidebar-node-count');
+  count.textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div style="padding:10px 14px;font-size:11px;color:#9aa0a6">No nodes</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(b => {
+    const isActive = b.id === panelId;
+    const dotColor = b.summary ? '#1a73e8' : '#bdc1c6';
+    return (
+      '<div class="sidebar-node-item' + (isActive ? ' active' : '') + '" data-id="' + b.id + '">' +
+        '<span class="sidebar-node-dot" style="background:' + dotColor + ';border:1.5px solid ' + dotColor + '"></span>' +
+        '<span class="sidebar-node-name" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</span>' +
+      '</div>'
+    );
+  }).join('');
+
+  list.querySelectorAll('.sidebar-node-item').forEach(el => {
+    el.addEventListener('click', () => openNodePanel(el.dataset.id));
+  });
+}
+
 // ── Views ──────────────────────────────────────────────────────────────────────
 function renderView() {
   const filtered = getFiltered();
   document.getElementById('result-count').textContent = filtered.length + ' bookmark';
   if (currentView === 'list') renderList(filtered);
   else renderGraph(filtered);
+  updateSidebarNodeList();
 }
 
 // ── List view ──────────────────────────────────────────────────────────────────
@@ -509,10 +538,11 @@ function openNodePanel(id) {
         ).join('')
       : '');
 
-  // Render connected nodes (shares ≥1 non-excluded tag with this bookmark)
+  // Render connected nodes — only among currently visible (filtered) bookmarks
   const connectedEl = document.getElementById('panel-connected');
+  const visibleIds = new Set(getFiltered().map(x => x.id));
   const connected = allBookmarks
-    .filter(x => x.id !== b.id)
+    .filter(x => x.id !== b.id && visibleIds.has(x.id))
     .map(x => {
       const sharedTags = (b.tags || []).filter(t => (x.tags || []).includes(t) && !excludedTags.has(t));
       return { bookmark: x, sharedTags };
@@ -548,11 +578,13 @@ function openNodePanel(id) {
   }
 
   document.getElementById('node-panel').classList.add('open');
+  updateSidebarNodeList();
 }
 
 function closeNodePanel() {
   document.getElementById('node-panel').classList.remove('open');
   panelId = null;
+  updateSidebarNodeList();
 }
 
 document.getElementById('panel-close').addEventListener('click', closeNodePanel);
