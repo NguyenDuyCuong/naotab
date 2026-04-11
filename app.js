@@ -599,10 +599,20 @@ document.getElementById('btn-ai-batch').addEventListener('click', async () => {
     return;
   }
 
-  const targets = getFiltered(); // nodes currently visible
-  if (targets.length === 0) { showToast('⚠️ No nodes to process.'); return; }
+  const allVisible = getFiltered(); // nodes currently visible
+  if (allVisible.length === 0) { showToast('⚠️ No nodes to process.'); return; }
 
-  const msg = 'AI-process ' + targets.length + ' visible node' + (targets.length > 1 ? 's' : '') + '?\nThis will generate tags & summaries for all of them.';
+  // Only process nodes without a summary
+  const targets = allVisible.filter(b => !b.summary);
+  const alreadyDone = allVisible.length - targets.length;
+
+  if (targets.length === 0) {
+    showToast('✅ All ' + allVisible.length + ' visible nodes already have a summary!');
+    return;
+  }
+
+  let msg = 'AI will process ' + targets.length + ' node' + (targets.length > 1 ? 's' : '') + ' (no summary yet).';
+  if (alreadyDone > 0) msg += '\n' + alreadyDone + ' already have a summary and will be skipped.';
   if (!confirm(msg)) return;
 
   // Show notify
