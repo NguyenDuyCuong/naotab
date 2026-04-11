@@ -130,7 +130,6 @@ async function saveBookmark({ url, title, reason, summary, tags, favIconUrl, pag
 
   bookmarks.unshift(bookmark); // mới nhất lên đầu
   await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks });
-  scheduleDriveSync();
   return { duplicate: false, bookmark };
 }
 
@@ -141,7 +140,6 @@ async function updateBookmark(id, changes) {
   if (idx === -1) return false;
   bookmarks[idx] = { ...bookmarks[idx], ...changes, updatedAt: new Date().toISOString() };
   await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks });
-  scheduleDriveSync();
   return true;
 }
 
@@ -150,7 +148,6 @@ async function deleteBookmark(id) {
   const bookmarks = await getBookmarks();
   const filtered = bookmarks.filter(b => b.id !== id);
   await chrome.storage.local.set({ [STORAGE_KEY]: filtered });
-  scheduleDriveSync();
 }
 
 // Suggest tags từ title + URL (offline, không cần API)
@@ -336,152 +333,4 @@ async function exportObsidian() {
   return bookmarks.map(b => bookmarkToObsidianMd(b));
 }
 
-// ─── Google Drive Sync ─────────────────────────────────────────────────────────
-// Uses Drive appDataFolder — private to this extension, not visible in user's Drive UI
-
-const DRIVE_FILENAME = 'naotab-bookmarks.json';
-const DRIVE_SETTINGS_KEY = 'drive_sync';
-
-async function getDriveSyncSettings() {
-  const result = await chrome.storage.local.get(DRIVE_SETTINGS_KEY);
-  return result[DRIVE_SETTINGS_KEY] || { enabled: false, lastSynced: null, email: null };
-}
-
-async function saveDriveSyncSettings(s) {
-  await chrome.storage.local.set({ [DRIVE_SETTINGS_KEY]: s });
-}
-
-// Get OAuth token (interactive = shows Google sign-in popup if needed)
-async function getDriveToken(interactive) {
-  return new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive: !!interactive }, (token) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(token);
-      }
-    });
-  });
-}
-
-// Revoke token (for sign-out)
-async function revokeDriveToken() {
-  return new Promise((resolve) => {
-    chrome.identity.getAuthToken({ interactive: false }, (token) => {
-      if (!token) { resolve(); return; }
-      fetch('https://accounts.google.com/o/oauth2/revoke?token=' + token);
-      chrome.identity.removeCachedAuthToken({ token }, resolve);
-    });
-  });
-}
-
-// Find existing backup file in appDataFolder, return its id or null
-async function findDriveFile(token) {
-  const res = await fetch(
-    'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name,modifiedTime)&q=name%3D%27' + DRIVE_FILENAME + '%27',
-    { headers: { Authorization: 'Bearer ' + token } }
-  );
-  if (!res.ok) throw new Error('Drive list error ' + res.status);
-  const data = await res.json();
-  return data.files && data.files.length > 0 ? data.files[0] : null;
-}
-
-// Upload (create or update) bookmarks to Drive
-async function driveUpload(token, bookmarks) {
-  const body = JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), bookmarks });
-  const blob = new Blob([body], { type: 'application/json' });
-  const existing = await findDriveFile(token);
-
-  let url, method;
-  if (existing) {
-    url = 'https://www.googleapis.com/upload/drive/v3/files/' + existing.id + '?uploadType=media';
-    method = 'PATCH';
-  } else {
-    // Create with metadata first (multipart), simpler: create empty then patch
-    const meta = JSON.stringify({ name: DRIVE_FILENAME, parents: ['appDataFolder'] });
-    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: meta,
-    });
-    if (!createRes.ok) throw new Error('Drive create error ' + createRes.status);
-    const created = await createRes.json();
-    url = 'https://www.googleapis.com/upload/drive/v3/files/' + created.id + '?uploadType=media';
-    method = 'PATCH';
-  }
-
-  const res = await fetch(url, {
-    method,
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: blob,
-  });
-  if (!res.ok) throw new Error('Drive upload error ' + res.status);
-  return await res.json();
-}
-
-// Download bookmarks from Drive
-async function driveDownload(token) {
-  const file = await findDriveFile(token);
-  if (!file) return null;
-  const res = await fetch(
-    'https://www.googleapis.com/drive/v3/files/' + file.id + '?alt=media',
-    { headers: { Authorization: 'Bearer ' + token } }
-  );
-  if (!res.ok) throw new Error('Drive download error ' + res.status);
-  return await res.json();
-}
-
-// Full sync: merge Drive ↔ local (newest-wins per bookmark id)
-async function driveSync() {
-  const ds = await getDriveSyncSettings();
-  if (!ds.enabled) return null;
-
-  const token = await getDriveToken(false); // silent — no popup during auto-sync
-  const local = await getBookmarks();
-
-  const remote = await driveDownload(token);
-  let merged = local;
-
-  if (remote && remote.bookmarks) {
-    const localMap = {};
-    local.forEach(b => { localMap[b.id] = b; });
-    const remoteMap = {};
-    remote.bookmarks.forEach(b => { remoteMap[b.id] = b; });
-
-    // Merge: keep newest updatedAt
-    const allIds = new Set([...Object.keys(localMap), ...Object.keys(remoteMap)]);
-    merged = [];
-    allIds.forEach(id => {
-      const l = localMap[id];
-      const r = remoteMap[id];
-      if (l && r) {
-        merged.push(new Date(l.updatedAt) >= new Date(r.updatedAt) ? l : r);
-      } else {
-        merged.push(l || r);
-      }
-    });
-    merged.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
-    await chrome.storage.local.set({ [STORAGE_KEY]: merged });
-  }
-
-  await driveUpload(token, merged);
-  const now = new Date().toISOString();
-  await saveDriveSyncSettings({ ...ds, lastSynced: now });
-  return { count: merged.length, syncedAt: now };
-}
-
-// Trigger sync after any write operation (debounced)
-let _driveSyncTimer = null;
-function scheduleDriveSync() {
-  clearTimeout(_driveSyncTimer);
-  _driveSyncTimer = setTimeout(async () => {
-    try {
-      const ds = await getDriveSyncSettings();
-      if (ds.enabled) await driveSync();
-    } catch (e) {
-      // Silent fail on auto-sync — user can manually trigger in settings
-      console.warn('[naoTab] Drive auto-sync failed:', e.message);
-    }
-  }, 3000); // 3s debounce
-}
 

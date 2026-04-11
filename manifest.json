@@ -7,18 +7,11 @@
     "tabs",
     "storage",
     "unlimitedStorage",
-    "scripting",
-    "identity"
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
-  "oauth2": {
-    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
-    "scopes": [
-      "https://www.googleapis.com/auth/drive.appdata"
-    ]
-  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "naoTab"
