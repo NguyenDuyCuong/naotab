@@ -19,6 +19,7 @@ A Chrome Extension (Manifest V3) that turns your browser tabs into an organized,
 - **Exclude tags from graph** — temporarily hide a tag's connections without deleting it, to declutter the graph
 - **AI integration** (optional, off by default) — auto-suggest tags and summaries via OpenAI, Claude, Groq, Ollama, OpenRouter, or any OpenAI-compatible provider
 - **AI Suggest in panel** — re-run AI on any saved bookmark directly from its detail panel
+- **AI Batch** — one-click AI processing for all currently visible/filtered nodes; skips nodes that already have a summary; live progress bar with real-time color update
 - **SEO meta extraction** — reads page meta tags (og:description, keywords, author, etc.) on save; ~10× more token-efficient than scraping body text
 - **Save whole window** — bulk-save all tabs in a window, each with its own meta tags captured
 - **Obsidian export** — ZIP of `.md` files with YAML frontmatter, ready to open as an Obsidian vault

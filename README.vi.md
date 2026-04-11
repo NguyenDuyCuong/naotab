@@ -19,6 +19,7 @@ Chrome Extension (Manifest V3) biến các tab trình duyệt thành một **kho
 - **Loại trừ tag khỏi đồ thị** — ẩn tạm kết nối của một tag mà không xóa, giúp dọn dẹp đồ thị
 - **Tích hợp AI** (tùy chọn, tắt mặc định) — tự động gợi ý tags và summary qua OpenAI, Claude, Groq, Ollama, OpenRouter hoặc bất kỳ provider tương thích OpenAI
 - **AI Suggest trong panel** — chạy lại AI trên bookmark đã lưu ngay từ panel chi tiết
+- **AI Batch** — một click để AI hoá toàn bộ node đang hiển thị/đang filter; bỏ qua node đã có summary; thanh tiến trình realtime, node đổi màu ngay khi xong
 - **Đọc meta SEO** — đọc meta tags khi lưu (og:description, keywords, author...); tiết kiệm token gấp ~10 lần so với scrape body
 - **Lưu cả window** — lưu hàng loạt toàn bộ tab, mỗi tab được đọc meta riêng
 - **Export Obsidian** — ZIP các file `.md` với YAML frontmatter, mở thẳng vào Obsidian
