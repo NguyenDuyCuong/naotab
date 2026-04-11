@@ -102,8 +102,27 @@ function updateSidebarNodeList() {
     );
   }).join('');
 
+  const snt = document.getElementById('sidebar-node-tooltip');
+
   list.querySelectorAll('.sidebar-node-item').forEach(el => {
     el.addEventListener('click', () => openNodePanel(el.dataset.id));
+
+    el.addEventListener('mouseenter', (e) => {
+      const b = allBookmarks.find(x => x.id === el.dataset.id);
+      if (!b) return;
+      snt.innerHTML =
+        '<div class="snt-title">' + escapeHtml(b.title) + '</div>' +
+        (b.summary
+          ? '<div class="snt-summary">' + escapeHtml(b.summary) + '</div>'
+          : '<div class="snt-no-summary">No summary yet</div>');
+      const rect = el.getBoundingClientRect();
+      snt.style.display = 'block';
+      // Position to the right of sidebar
+      snt.style.left = (rect.right + 8) + 'px';
+      snt.style.top = Math.min(rect.top, window.innerHeight - snt.offsetHeight - 8) + 'px';
+    });
+
+    el.addEventListener('mouseleave', () => { snt.style.display = 'none'; });
   });
 }
 
@@ -269,6 +288,7 @@ function renderGraph(bookmarks) {
       tooltip.innerHTML =
         '<strong>' + escapeHtml(d.title) + '</strong>' +
         '<div class="tt-url">' + escapeHtml(d.url) + '</div>' +
+        (d.summary ? '<div class="tt-summary">' + escapeHtml(d.summary) + '</div>' : '') +
         (d.reason ? '<div class="tt-reason">"' + escapeHtml(d.reason) + '"</div>' : '') +
         '<div class="tt-tags">' + d.tags.map(t => '<span class="tt-tag">' + escapeHtml(t) + '</span>').join('') + '</div>';
     })

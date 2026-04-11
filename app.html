@@ -135,6 +135,39 @@
     }
     .sidebar-node-item.active .sidebar-node-name { color: #1a73e8; font-weight: 600; }
 
+    /* Sidebar node hover tooltip */
+    #sidebar-node-tooltip {
+      position: fixed;
+      z-index: 600;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      width: 240px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      pointer-events: none;
+      font-size: 12px;
+      display: none;
+    }
+    #sidebar-node-tooltip .snt-title {
+      font-weight: 600;
+      color: #202124;
+      font-size: 12px;
+      line-height: 1.4;
+      margin-bottom: 5px;
+    }
+    #sidebar-node-tooltip .snt-summary {
+      color: #5f6368;
+      font-size: 11px;
+      line-height: 1.5;
+      border-left: 3px solid #1a73e8;
+      padding-left: 7px;
+    }
+    #sidebar-node-tooltip .snt-no-summary {
+      color: #9aa0a6;
+      font-size: 11px;
+      font-style: italic;
+    }
 
     .tag-cloud {
       display: flex;
@@ -338,6 +371,7 @@
     }
     .graph-tooltip strong { display: block; margin-bottom: 4px; color: #202124; font-size: 12px; }
     .graph-tooltip .tt-url { color: #80868b; font-size: 10px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .graph-tooltip .tt-summary { color: #3c4043; margin-bottom: 5px; line-height: 1.5; border-left: 3px solid #1a73e8; padding-left: 7px; }
     .graph-tooltip .tt-reason { color: #5f6368; font-style: italic; margin-bottom: 6px; }
     .graph-tooltip .tt-tags { display: flex; gap: 4px; flex-wrap: wrap; }
     .graph-tooltip .tt-tag { padding: 1px 6px; border-radius: 8px; font-size: 10px; background: #e8f0fe; color: #1557b0; }
@@ -778,6 +812,7 @@
 </div>
 
 <div id="toast" class="hidden"></div>
+<div id="sidebar-node-tooltip"></div>
 
 <!-- AI Batch progress notify -->
 <div id="ai-batch-notify" class="hidden">
