@@ -145,4 +145,100 @@ function showToast(msg) {
   showToast._t = setTimeout(() => t.classList.add('hidden'), 2500);
 }
 
+// ── Google Drive Sync UI ───────────────────────────────────────────────────────
+
+async function loadDriveStatus() {
+  const ds = await getDriveSyncSettings();
+  const signedIn = !!ds.email;
+
+  document.getElementById('drive-signed-out').style.display = signedIn ? 'none' : 'block';
+  document.getElementById('drive-signed-in').style.display  = signedIn ? 'flex' : 'none';
+
+  if (signedIn) {
+    document.getElementById('drive-email').textContent = ds.email;
+    document.getElementById('drive-enabled').checked = ds.enabled || false;
+    document.getElementById('drive-last-synced').textContent = ds.lastSynced
+      ? new Date(ds.lastSynced).toLocaleString('en-US')
+      : 'Never';
+  }
+}
+
+document.getElementById('btn-drive-signin').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-drive-signin');
+  btn.disabled = true;
+  btn.textContent = '⏳ Signing in...';
+  try {
+    const token = await getDriveToken(true);
+    // Get user info
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const info = await res.json();
+    const ds = await getDriveSyncSettings();
+    await saveDriveSyncSettings({ ...ds, enabled: true, email: info.email || 'Connected' });
+    await loadDriveStatus();
+    showToast('✅ Signed in as ' + (info.email || 'Google account'));
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = '🔑 Sign in with Google';
+});
+
+document.getElementById('drive-enabled').addEventListener('change', async (e) => {
+  const ds = await getDriveSyncSettings();
+  await saveDriveSyncSettings({ ...ds, enabled: e.target.checked });
+  showToast(e.target.checked ? '✅ Auto-sync enabled' : '⏸️ Auto-sync paused');
+});
+
+document.getElementById('btn-drive-sync-now').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-drive-sync-now');
+  const result = document.getElementById('drive-sync-result');
+  btn.disabled = true;
+  result.textContent = '⏳ Syncing...';
+  try {
+    const out = await driveSync();
+    result.textContent = '✅ Synced ' + out.count + ' bookmarks';
+    result.style.color = '#34a853';
+    await loadDriveStatus();
+  } catch (e) {
+    result.textContent = '❌ ' + e.message;
+    result.style.color = '#d93025';
+  }
+  btn.disabled = false;
+});
+
+document.getElementById('btn-drive-restore').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-drive-restore');
+  const result = document.getElementById('drive-sync-result');
+  if (!confirm('Restore and merge bookmarks from Google Drive? Local bookmarks will be merged (not deleted).')) return;
+  btn.disabled = true;
+  result.textContent = '⏳ Restoring...';
+  try {
+    const token = await getDriveToken(false);
+    const remote = await driveDownload(token);
+    if (!remote || !remote.bookmarks) {
+      result.textContent = '⚠️ No backup found on Drive.';
+      result.style.color = '#f9ab00';
+    } else {
+      const out = await importJSON(JSON.stringify(remote));
+      result.textContent = '✅ Restored: ' + out.imported + ' new, ' + out.skipped + ' already existed';
+      result.style.color = '#34a853';
+    }
+  } catch (e) {
+    result.textContent = '❌ ' + e.message;
+    result.style.color = '#d93025';
+  }
+  btn.disabled = false;
+});
+
+document.getElementById('btn-drive-signout').addEventListener('click', async () => {
+  if (!confirm('Sign out from Google Drive sync? Your local bookmarks will not be deleted.')) return;
+  await revokeDriveToken();
+  await saveDriveSyncSettings({ enabled: false, lastSynced: null, email: null });
+  await loadDriveStatus();
+  showToast('👋 Signed out from Drive sync');
+});
+
 loadSettings();
+loadDriveStatus();

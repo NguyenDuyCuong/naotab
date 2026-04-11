@@ -1,17 +1,24 @@
 {
   "manifest_version": 3,
   "name": "naoTab",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Turn your browser tabs into a personal knowledge base — with context, tags, AI summaries, and a visual network graph.",
   "permissions": [
     "tabs",
     "storage",
     "unlimitedStorage",
-    "scripting"
+    "scripting",
+    "identity"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
+  "oauth2": {
+    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.appdata"
+    ]
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "naoTab"

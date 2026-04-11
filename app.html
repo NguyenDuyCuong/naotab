@@ -515,6 +515,31 @@
       white-space: nowrap;
     }
     #toast.hidden { display: none; }
+
+    /* AI Batch notify — bottom-right corner */
+    #ai-batch-notify {
+      position: fixed; bottom: 16px; right: 16px;
+      background: #1a1a2e; color: white;
+      padding: 10px 16px;
+      border-radius: 10px; font-size: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      z-index: 9998;
+      min-width: 220px;
+      max-width: 300px;
+      display: flex; flex-direction: column; gap: 5px;
+      transition: opacity 0.3s;
+    }
+    #ai-batch-notify.hidden { display: none; }
+    #ai-batch-notify .notify-title { font-weight: 600; font-size: 13px; }
+    #ai-batch-notify .notify-bar-bg {
+      background: rgba(255,255,255,0.15);
+      border-radius: 4px; height: 4px; overflow: hidden;
+    }
+    #ai-batch-notify .notify-bar-fill {
+      background: #4fc3f7; height: 4px; border-radius: 4px;
+      transition: width 0.3s;
+    }
+    #ai-batch-notify .notify-sub { font-size: 11px; color: rgba(255,255,255,0.7); }
   </style>
 </head>
 <body>
@@ -528,6 +553,7 @@
     <button id="btn-export-obsidian">🟣 Export Obsidian</button>
     <button id="btn-import-trigger">📥 Import JSON</button>
     <input type="file" id="btn-import" accept=".json" style="display:none" />
+    <button id="btn-ai-batch" title="AI all visible nodes">✨ AI All</button>
     <button id="btn-delete-all" style="background:rgba(217,48,37,0.2);border-color:rgba(217,48,37,0.5);">🗑️ Delete all</button>
   </div>
 </div>
@@ -626,6 +652,13 @@
 </div>
 
 <div id="toast" class="hidden"></div>
+
+<!-- AI Batch progress notify -->
+<div id="ai-batch-notify" class="hidden">
+  <div class="notify-title">✨ AI processing…</div>
+  <div class="notify-bar-bg"><div class="notify-bar-fill" id="ai-batch-bar" style="width:0%"></div></div>
+  <div class="notify-sub" id="ai-batch-sub"></div>
+</div>
 
 <script src="storage.js"></script>
 <script src="app.js"></script>

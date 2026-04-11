@@ -336,6 +336,52 @@
     </div>
   </div>
 
+  <!-- Google Drive Sync card -->
+  <div class="card">
+    <div class="card-title">
+      <div>
+        <h2>☁️ Google Drive Sync</h2>
+        <p>Auto-backup bookmarks to your private Google Drive (appDataFolder)</p>
+      </div>
+    </div>
+    <div class="card-body" style="gap:14px">
+
+      <div class="info-box" id="drive-info-box">
+        Sign in with Google to enable automatic sync. Your data is stored in a private app folder — not visible in your regular Drive.
+      </div>
+
+      <div id="drive-signed-out">
+        <button class="btn-test" id="btn-drive-signin">🔑 Sign in with Google</button>
+      </div>
+
+      <div id="drive-signed-in" style="display:none; flex-direction:column; gap:12px">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Auto-sync enabled</div>
+            <div class="toggle-desc">Syncs automatically 3 seconds after each save, edit, or delete</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="drive-enabled" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div id="drive-status-row" style="font-size:12px; color:#5f6368; display:flex; flex-direction:column; gap:4px">
+          <div>Signed in as: <strong id="drive-email">—</strong></div>
+          <div>Last synced: <span id="drive-last-synced">Never</span></div>
+        </div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button class="btn-test" id="btn-drive-sync-now">🔄 Sync now</button>
+          <button class="btn-test" id="btn-drive-restore">⬇️ Restore from Drive</button>
+          <button class="btn-test" id="btn-drive-signout" style="color:#d93025; border-color:#d93025">Sign out</button>
+        </div>
+        <div id="drive-sync-result" style="font-size:12px"></div>
+      </div>
+
+    </div>
+  </div>
+
   <div class="save-row">
     <button class="btn-save" id="btn-save">💾 Save Settings</button>
   </div>

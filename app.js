@@ -591,6 +591,87 @@ document.getElementById('panel-delete').addEventListener('click', async () => {
   showToast('🗑️ Deleted');
 });
 
+// ── AI Batch ───────────────────────────────────────────────────────────────────
+document.getElementById('btn-ai-batch').addEventListener('click', async () => {
+  const settings = await getSettings();
+  if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
+    showToast('⚠️ AI not configured. Go to Settings first.');
+    return;
+  }
+
+  const targets = getFiltered(); // nodes currently visible
+  if (targets.length === 0) { showToast('⚠️ No nodes to process.'); return; }
+
+  const msg = 'AI-process ' + targets.length + ' visible node' + (targets.length > 1 ? 's' : '') + '?\nThis will generate tags & summaries for all of them.';
+  if (!confirm(msg)) return;
+
+  // Show notify
+  const notify = document.getElementById('ai-batch-notify');
+  const bar    = document.getElementById('ai-batch-bar');
+  const sub    = document.getElementById('ai-batch-sub');
+  notify.classList.remove('hidden');
+  notify.querySelector('.notify-title').textContent = '✨ AI processing…';
+  bar.style.width = '0%';
+  sub.textContent = '0 / ' + targets.length + ' done';
+
+  document.getElementById('btn-ai-batch').disabled = true;
+
+  let done = 0;
+  let failed = 0;
+
+  for (const b of targets) {
+    // Build aiText from saved pageMeta
+    const meta = b.pageMeta || {};
+    const parts = [];
+    if (meta.ogTitle && meta.ogTitle !== b.title) parts.push('Title: ' + meta.ogTitle);
+    if (meta.description) parts.push('Description: ' + meta.description);
+    if (meta.keywords) parts.push('Keywords: ' + meta.keywords);
+    if (meta.ogType) parts.push('Type: ' + meta.ogType);
+    if (meta.author) parts.push('Author: ' + meta.author);
+    if (meta.siteName) parts.push('Site: ' + meta.siteName);
+    const aiText = parts.join('\n');
+
+    try {
+      const result = await callAI(b.title, b.url, aiText);
+      if (result) {
+        const changes = {};
+        if (settings.featTags && result.tags?.length) {
+          changes.tags = [...new Set([...result.tags, ...(b.tags || [])])].slice(0, 8);
+        }
+        if (settings.featSummary && result.summary) {
+          changes.summary = result.summary;
+        }
+        if (Object.keys(changes).length) {
+          await updateBookmark(b.id, changes);
+          // Update local state immediately so color updates on re-render
+          const local = allBookmarks.find(x => x.id === b.id);
+          if (local) Object.assign(local, changes);
+        }
+      }
+    } catch (e) {
+      failed++;
+    }
+
+    done++;
+    const pct = Math.round((done / targets.length) * 100);
+    bar.style.width = pct + '%';
+    sub.textContent = done + ' / ' + targets.length + ' done' + (failed ? ' (' + failed + ' failed)' : '');
+
+    // Re-render after each node so color updates live
+    renderAll();
+  }
+
+  document.getElementById('btn-ai-batch').disabled = false;
+
+  // Done state
+  notify.querySelector('.notify-title').textContent = '✅ AI batch complete';
+  sub.textContent = (done - failed) + ' processed' + (failed ? ', ' + failed + ' failed' : '');
+  allBookmarks = await getBookmarks();
+  renderAll();
+
+  setTimeout(() => notify.classList.add('hidden'), 4000);
+});
+
 // ── Delete all ─────────────────────────────────────────────────────────────────
 document.getElementById('btn-delete-all').addEventListener('click', async () => {
   if (allBookmarks.length === 0) { showToast('⚠️ No bookmarks yet!'); return; }
