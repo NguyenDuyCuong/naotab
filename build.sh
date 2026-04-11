@@ -28,9 +28,8 @@ zip -r "$OUTPUT" \
   popup.html popup.css popup.js \
   app.html app.js \
   settings.html settings.js \
-  schema.js storage.js ai.js export.js \
-  d3.min.js \
-  jszip.min.js \
+  core/ \
+  vendor/ \
   icons/
 
 echo "✅ Built: $OUTPUT"
