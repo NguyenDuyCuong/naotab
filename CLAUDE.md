@@ -13,16 +13,19 @@ UI language: **English**. Codebase comments: mixed EN/VI.
 ```
 naoTab/
 ├── manifest.json        # Manifest V3, permissions: tabs + storage + unlimitedStorage + scripting
-├── popup.html           # Popup — view tabs, save, copy, export
-├── popup.css            # Popup styles
-├── popup.js             # Popup logic
-├── app.html             # Knowledge Base full-page (loads app.js, storage.js, d3.min.js, jszip.min.js)
-├── app.js               # Knowledge Base logic (graph + list + panel + filters)
-├── settings.html        # AI provider config page
-├── settings.js          # Settings page logic
-├── storage.js           # Shared module: bookmarks CRUD + settings + AI call
-├── d3.min.js            # D3.js v7.9.0 — bundled locally (CSP compliance)
-├── jszip.min.js         # JSZip 3.10.1 — bundled locally (CSP compliance)
+├── popup.html/css/js    # Popup — view tabs, save, export
+├── app.html/js          # Knowledge Base full-page
+├── settings.html/js     # AI provider config page
+├── build.sh             # Build script → naotab-vX.Y.Z.zip
+├── core/
+│   ├── schema.js        # ⚠️ Single source of truth for data structure — never remove fields
+│   ├── storage.js       # Bookmarks CRUD + settings (reads only, no business logic)
+│   ├── ai.js            # callAI() + suggestTags()
+│   └── export.js        # exportJSON / importJSON / exportObsidian / bookmarkToObsidianMd
+│   └── sync/            # (future) drive.js, notion.js, etc.
+├── vendor/
+│   ├── d3.min.js        # D3.js v7.9.0 — bundled locally (CSP compliance)
+│   └── jszip.min.js     # JSZip 3.10.1 — bundled locally (CSP compliance)
 ├── icons/               # icon16/48/128.png
 ├── README.md            # English README (links to VI version)
 ├── README.vi.md         # Vietnamese README (links to EN version)
@@ -86,17 +89,29 @@ Note: `status` field removed from UI (was: unread/reading/done/revisit). `pageMe
 
 ## Key files and responsibilities
 
-### `storage.js`
-Shared module, loaded via `<script src>` into popup and app.html.
+### `core/schema.js`
+⚠️ **Never remove or rename existing fields.** Only ADD new fields with a default value.
 
-Global functions:
-- `getBookmarks()` — read all bookmarks
-- `saveBookmark({url, title, reason, summary, tags, favIconUrl, pageMeta})` — save new, dedup by URL
+- `SCHEMA_VERSION` — current version integer, increment when adding fields
+- `BOOKMARK_DEFAULTS` — canonical bookmark shape with all fields and defaults
+- `SETTINGS_DEFAULTS` — canonical settings shape
+- `migrateBookmark(raw)` — heals old bookmark objects: fills missing fields, drops removed ones
+- `createBookmark(fields)` — builds a new bookmark object with all required fields
+
+### `core/storage.js`
+CRUD only. Loaded into popup, app, settings pages.
+
+- `getBookmarks()` — read all bookmarks, runs `migrateBookmark()` on each (safe for old data)
+- `saveBookmark(fields)` — save new, dedup by URL, calls `createBookmark()`
 - `updateBookmark(id, changes)` — partial update
 - `deleteBookmark(id)` — delete by id
-- `suggestTags(title, url)` — offline keyword + domain matching, returns tag array
 - `getSettings()` / `saveSettings(settings)` — read/write settings
+
+### `core/ai.js`
 - `callAI(title, url, pageMetaText)` — call AI API, returns `{tags, summary}` or throws
+- `suggestTags(title, url)` — offline keyword + domain matching, returns tag array
+
+### `core/export.js`
 - `exportJSON()` / `importJSON(jsonString)` — full backup/restore
 - `bookmarkToObsidianMd(bookmark)` / `exportObsidian()` — Obsidian .md export
 
@@ -174,7 +189,9 @@ Key features:
 
 ## Roadmap
 
-- [ ] Google Drive sync
+- [ ] Google Drive sync (`core/sync/drive.js` — branch: feature/google-drive-sync)
+- [ ] Semantic / AI-powered search
+- [ ] AI Cluster Summary (summarize all visible nodes as a group)
 - [ ] Dark mode
 - [ ] Duplicate tab detector
 - [ ] AI-powered bookmark grouping
