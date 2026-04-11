@@ -24,6 +24,9 @@ Chrome Extension (Manifest V3) biến các tab trình duyệt thành một **kho
 - **Lưu cả window** — lưu hàng loạt toàn bộ tab, mỗi tab được đọc meta riêng
 - **Export Obsidian** — ZIP các file `.md` với YAML frontmatter, mở thẳng vào Obsidian
 - **Export / Import JSON** — backup và restore toàn bộ dữ liệu
+- **Connected nodes** — panel node hiển thị danh sách các bookmark đang link với node đang chọn (trong filter hiện tại), click để chuyển qua lại
+- **Sidebar node list** — sidebar trái chia đôi: Tags (trên) + danh sách node hiện tại (dưới), cập nhật realtime theo filter/search
+- **Hover tooltips** — di chuột vào node hoặc item sidebar để xem trước title + summary ngay lập tức
 - **100% cục bộ** — toàn bộ dữ liệu trong `chrome.storage.local`, không gửi ra ngoài ngoại trừ lệnh gọi AI tùy chọn
 
 ---

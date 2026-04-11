@@ -114,7 +114,10 @@ State: `allBookmarks`, `activeTag`, `excludedTags` (Set), `searchQuery`, `curren
 Key features:
 - **Graph view** (default): D3 force simulation, single-click → node panel + highlight connected nodes, double-click → open URL, click background → reset. Node color: blue (has summary) vs grey (no summary)
 - **List view**: card per bookmark, click card → node panel (links/buttons still work normally)
-- **Node panel**: slide-in right panel with full details, editable fields, AI Suggest button (shown only when AI enabled), save/delete/open-url actions
+- **Node panel**: slide-in right panel with full details, editable fields, AI Suggest button (shown only when AI enabled), Connected nodes section (only within current filter), save/delete/open-url actions
+- **Sidebar**: split into Tags (top, scrollable) + Node list (bottom, realtime). Node list updates with filter/search; click item → open panel; hover item → tooltip with title + summary
+- **Graph tooltip**: shows title, URL, summary (blue border), reason, tags on hover
+- **AI Batch**: `✨ AI All` button in topbar — processes only visible nodes without a summary, shows confirm with counts, progress bar + notify in bottom-right, nodes update color live
 - **Exclude tags**: tag pills in sidebar have `✕` button on hover → excluded tags shown as strikethrough red, not used for graph edges
 - **Delete all**: button in topbar with confirmation
 - **Refresh**: 🔄 button in topbar

@@ -24,6 +24,9 @@ A Chrome Extension (Manifest V3) that turns your browser tabs into an organized,
 - **Save whole window** — bulk-save all tabs in a window, each with its own meta tags captured
 - **Obsidian export** — ZIP of `.md` files with YAML frontmatter, ready to open as an Obsidian vault
 - **JSON export / import** — full backup and restore
+- **Connected nodes** — node panel shows all bookmarks linked to the selected node (within current filter), click to navigate between them
+- **Sidebar node list** — left sidebar split into Tags (top) + live node list (bottom), updates with filter/search in real time
+- **Hover tooltips** — hover any node or sidebar item to preview title + summary instantly
 - **100% local** — all data in `chrome.storage.local`, nothing leaves your machine except optional AI API calls
 
 ---
