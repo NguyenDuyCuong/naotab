@@ -791,13 +791,17 @@ function updateEdgesForDedupNodes(edges, oldNodes, newNodes) {
   
   // Update edges to use new node IDs
   return edges.map(e => {
-    const newSource = oldToNewMap[e.source] || e.source;
-    const newTarget = oldToNewMap[e.target] || e.target;
+    const source = e.source ?? e.from;
+    const target = e.target ?? e.to;
+    const newSource = oldToNewMap[source] || source;
+    const newTarget = oldToNewMap[target] || target;
     
     return {
       ...e,
       source: newSource,
-      target: newTarget
+      target: newTarget,
+      from: newSource,
+      to: newTarget
     };
   });
 }
@@ -1007,19 +1011,35 @@ function createD3Chart(data, allNodes) {
   const links = data.links.map(d => ({...d}));
   const nodes = data.nodes.map(d => ({...d}));
   
-  // Create a set of valid node IDs for fast lookup
-  const validNodeIds = new Set(nodes.map(n => n.id));
+  // Normalize by string key to avoid number/string ID mismatches
+  const canonicalNodeIdByKey = new Map(nodes.map(n => [String(n.id), n.id]));
   
-  // Filter links to only include those where both source and target exist
-  const validLinks = links.filter(link => {
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-    const isValid = validNodeIds.has(sourceId) && validNodeIds.has(targetId);
-    if (!isValid) {
-      console.warn(`Skipping orphaned link: ${sourceId} -> ${targetId}`);
-    }
-    return isValid;
-  });
+  // Filter and remap links to canonical node IDs used by the current graph nodes
+  const validLinks = links
+    .map(link => {
+      const sourceRaw = (link.source && typeof link.source === 'object') ? link.source.id : link.source;
+      const targetRaw = (link.target && typeof link.target === 'object') ? link.target.id : link.target;
+      const sourceId = canonicalNodeIdByKey.get(String(sourceRaw));
+      const targetId = canonicalNodeIdByKey.get(String(targetRaw));
+
+      if (sourceId === undefined || targetId === undefined) {
+        console.warn(`Skipping orphaned link: ${String(sourceRaw)} -> ${String(targetRaw)}`);
+        return null;
+      }
+
+      return {
+        ...link,
+        source: sourceId,
+        target: targetId
+      };
+    })
+    .filter(Boolean);
+
+  if (validLinks.length === 0 && links.length > 0) {
+    console.warn(`All ${links.length} links were filtered out. Check ID consistency between nodes and links.`);
+  } else if (links.length > validLinks.length) {
+    console.warn(`Filtered ${links.length - validLinks.length} invalid links out of ${links.length}.`);
+  }
 
   // D3 force simulation with initial tuning
   const simulation = d3.forceSimulation(nodes);
@@ -2347,6 +2367,13 @@ async function autoFixHealthIssues(report) {
 // Close health-lint modal
 document.getElementById('report-close').addEventListener('click', () => {
   document.getElementById('health-lint-modal').classList.add('hidden');
+});
+
+// Close modal on backdrop click
+document.getElementById('health-lint-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'health-lint-modal' || e.target.classList.contains('modal-overlay')) {
+    document.getElementById('health-lint-modal').classList.add('hidden');
+  }
 });
 
 document.getElementById('report-save').addEventListener('click', () => {
