@@ -3,8 +3,8 @@
 > **Stack:** raw-http | none | unknown | python
 
 > 0 routes | 0 models | 0 components | 2 lib files | 0 env vars | 0 middleware
-> **Token savings:** this file is ~200 tokens. Without it, AI exploration would cost ~3,300 tokens. **Saves ~3,100 tokens per conversation.**
-> **Last scanned:** 2026-05-12 07:48 — re-run after significant changes
+> **Token savings:** this file is ~200 tokens. Without it, AI exploration would cost ~4,500 tokens. **Saves ~4,200 tokens per conversation.**
+> **Last scanned:** 2026-05-12 08:46 — re-run after significant changes
 
 ---
 

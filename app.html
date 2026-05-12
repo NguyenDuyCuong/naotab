@@ -769,6 +769,77 @@
       transition: width 0.3s;
     }
     #ai-batch-notify .notify-sub { font-size: 11px; color: rgba(255,255,255,0.7); }
+
+    /* NEW in v3: Content type filters */
+    .content-type-filters {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 12px;
+      background: #f1f3f4;
+      border-radius: 8px;
+      flex-wrap: wrap;
+    }
+    .content-type-filters label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #3c4043;
+      user-select: none;
+    }
+    .content-type-filters input[type="checkbox"] {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+    }
+    .content-type-filters label:hover {
+      color: #1a73e8;
+    }
+
+    /* Panel badges styling */
+    .panel-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .badge-ai-summary {
+      background: #e6f4ea;
+      color: #137333;
+      border: 1px solid #b6f0b1;
+    }
+    .badge-ai-tags {
+      background: #e6f4ea;
+      color: #137333;
+      border: 1px solid #b6f0b1;
+    }
+    .badge-manual {
+      background: #e3f2fd;
+      color: #1565c0;
+      border: 1px solid #bbdefb;
+    }
+    .badge-content-type {
+      background: #fff3e0;
+      color: #e65100;
+      border: 1px solid #ffe0b2;
+    }
+    .badge-reading-time {
+      background: #fce4ec;
+      color: #880e4f;
+      border: 1px solid #f8bbd0;
+    }
   </style>
 </head>
 <body>
@@ -816,6 +887,14 @@
         <button class="view-btn active" id="btn-list-view" title="List view">☰</button>
         <button class="view-btn" id="btn-graph-view" title="Graph view">⬡</button>
       </div>
+      <!-- NEW in v3: Content type filters -->
+      <div class="content-type-filters">
+        <label><input type="checkbox" class="content-filter" data-type="article" checked> 📰 Articles</label>
+        <label><input type="checkbox" class="content-filter" data-type="video" checked> 🎥 Videos</label>
+        <label><input type="checkbox" class="content-filter" data-type="guide" checked> 📚 Guides</label>
+        <label><input type="checkbox" class="content-filter" data-type="tool" checked> 🛠️ Tools</label>
+        <label><input type="checkbox" class="content-filter" data-type="paper" checked> 📄 Papers</label>
+      </div>
     </div>
 
     <!-- List view -->
@@ -859,6 +938,7 @@
     <div class="panel-title-block">
       <div class="panel-title" id="panel-title"></div>
       <div class="panel-url" id="panel-url"></div>
+      <div id="panel-badges" class="panel-badges"></div>
     </div>
     <button class="panel-close" id="panel-close">✕</button>
   </div>

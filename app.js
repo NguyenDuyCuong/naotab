@@ -81,7 +81,7 @@ function renderAll() {
 
 // ── Filter logic ───────────────────────────────────────────────────────────────
 function getFiltered() {
-  return allBookmarks.filter(b => {
+  let filtered = allBookmarks.filter(b => {
     if (activeTag && !b.tags.includes(activeTag)) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -93,6 +93,18 @@ function getFiltered() {
     }
     return true;
   });
+
+  // NEW in v3: Filter by content type
+  const selectedTypes = new Set();
+  document.querySelectorAll('.content-filter:checked').forEach(el => {
+    selectedTypes.add(el.dataset.type);
+  });
+  
+  if (selectedTypes.size > 0 && selectedTypes.size < 6) { // 6 total content types
+    filtered = filtered.filter(b => selectedTypes.has(b.content_type || 'article'));
+  }
+
+  return filtered;
 }
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -1034,6 +1046,23 @@ document.getElementById('btn-import').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
+// ── Helper Functions ───────────────────────────────────────────────────────────
+/**
+ * getContentTypeEmoji(type)
+ * Return emoji for content type badge
+ */
+function getContentTypeEmoji(type) {
+  const emojis = {
+    'article': '📰',
+    'video': '🎥',
+    'guide': '📚',
+    'tool': '🛠️',
+    'paper': '📄',
+    'bookmark': '🔖'
+  };
+  return emojis[type] || '📄';
+}
+
 // ── Node detail panel ──────────────────────────────────────────────────────────
 function openNodePanel(id) {
   const b = allBookmarks.find(x => x.id === id);
@@ -1052,6 +1081,36 @@ function openNodePanel(id) {
   document.getElementById('panel-summary').value = b.summary || '';
   document.getElementById('panel-reason').value = b.reason || '';
   document.getElementById('panel-tags').value = (b.tags || []).join(', ');
+
+  // NEW in v3: Show AI attribution and content type badges
+  const badgesEl = document.getElementById('panel-badges');
+  let badgesHtml = '<div class="panel-badges">';
+  
+  // AI attribution badge
+  if (b.ai_generated) {
+    badgesHtml += '<span class="badge badge-ai-summary">🤖 AI Summary</span>';
+  } else if (b.summary) {
+    badgesHtml += '<span class="badge badge-manual">✍️ Manual</span>';
+  }
+  
+  // AI tags badge
+  if (b.ai_tags) {
+    badgesHtml += '<span class="badge badge-ai-tags">🤖 AI Tags</span>';
+  }
+  
+  // Content type badge
+  if (b.content_type) {
+    const emoji = getContentTypeEmoji(b.content_type);
+    badgesHtml += '<span class="badge badge-content-type">' + emoji + ' ' + escapeHtml(b.content_type) + '</span>';
+  }
+  
+  // Reading time badge
+  if (b.reading_time && b.reading_time > 0) {
+    badgesHtml += '<span class="badge badge-reading-time">⏱️ ' + b.reading_time + ' min read</span>';
+  }
+  
+  badgesHtml += '</div>';
+  badgesEl.innerHTML = badgesHtml;
 
   // Show AI row only if AI is enabled
   getSettings().then(settings => {
@@ -1196,8 +1255,13 @@ document.getElementById('panel-btn-ai').addEventListener('click', async () => {
     status.textContent = '❌ ' + e.message;
     status.className = 'panel-ai-status error';
   }
+});
 
-  btn.disabled = false;
+// NEW in v3: Content type filter event listeners
+document.querySelectorAll('.content-filter').forEach(checkbox => {
+  checkbox.addEventListener('change', () => {
+    renderAll();
+  });
 });
 
 document.getElementById('panel-open-url').addEventListener('click', () => {

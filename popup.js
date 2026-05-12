@@ -2,6 +2,8 @@ let allTabs = [];
 let savedUrls = new Set(); // track saved URLs
 let modalTab = null;     // tab currently being saved
 let modalPageMeta = {};  // page meta tags read from tab
+let aiSummaryUsed = false; // track if AI generated the summary
+let aiTagsUsed = false;    // track if AI generated the tags
 
 // ─── Load tabs ───────────────────────────────────────────────────────────────
 
@@ -269,6 +271,8 @@ async function openSaveModal(tab) {
   modalTab = tab;
   modalPageMeta = {};
   selectedTags = suggestTags(tab.title, tab.url);
+  aiSummaryUsed = false;  // NEW: Reset AI tracking
+  aiTagsUsed = false;     // NEW: Reset AI tracking
 
   // Read meta tags in background (non-blocking)
   getPageMeta(tab.id).then(meta => {
@@ -361,10 +365,12 @@ document.getElementById('btn-ai-suggest').addEventListener('click', async () => 
       const settings = await getSettings();
       if (settings.featTags && result.tags?.length) {
         selectedTags = [...new Set([...result.tags, ...selectedTags])].slice(0, 8);
+        aiTagsUsed = true;  // NEW: Track that AI generated tags
         renderModalTags();
       }
       if (settings.featSummary && result.summary) {
         document.getElementById('modal-summary').value = result.summary;
+        aiSummaryUsed = true;  // NEW: Track that AI generated summary
       }
       status.textContent = '✅ Done!';
       status.className = 'ai-status';
@@ -390,6 +396,8 @@ document.getElementById('modal-save').addEventListener('click', async () => {
     tags: selectedTags,
     favIconUrl: modalTab.favIconUrl,
     pageMeta: modalPageMeta._aiText ? modalPageMeta : undefined,
+    ai_generated: aiSummaryUsed,  // NEW: Track if summary was AI-generated
+    ai_tags: aiTagsUsed,           // NEW: Track if tags were AI-generated
   });
 
   if (result.duplicate) {
