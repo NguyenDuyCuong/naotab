@@ -1372,21 +1372,8 @@ if (btnExtractAll) {
     showToast('✅ Extraction complete for ' + toExtract.length + ' bookmarks!');
   });
 }
-          entities: extracted.entities,
-          keywords: extracted.keywords,
-          key_statistics: extracted.key_statistics,
-          purpose: extracted.purpose,
-          thesis: extracted.thesis,
-          key_message: extracted.key_message,
-          ai_extracted_fields: extracted.ai_extracted_fields,
-          extraction_confidence: extracted.extraction_confidence,
-          extraction_timestamp: extracted.extraction_timestamp
-        });
-      } catch (e) {
-        console.warn('Extraction failed for', b.id, e);
-      }
-      btnExtractAll.textContent = `⏳ ${i + 1}/${toExtract.length}`;
-    }
+
+// ── AI Batch Processing Helper ────────────────────────────────────────────────
 
     allBookmarks = await getBookmarks();
     renderAll();
@@ -2092,6 +2079,293 @@ if (layersCollapsed) {
   const arrow = document.querySelector('#layers-toggle span');
   if (arrow) arrow.textContent = '▶';
 }
+
+// ── NEW in v6c: Health & Lint Check Handlers ─────────────────────────────────────
+document.getElementById('btn-health').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-health');
+  btn.disabled = true;
+  btn.textContent = '⏳ Checking...';
+  
+  try {
+    const report = await runHealthCheck(allBookmarks);
+    showHealthLintReport(report, 'health');
+  } catch (e) {
+    showToast('❌ Health check failed: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🏥 Health';
+  }
+});
+
+document.getElementById('btn-lint').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-lint');
+  const settings = await getSettings();
+  
+  if (!settings.aiEnabled) {
+    showToast('⚠️ Lint requires AI enabled in Settings');
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ Linting...';
+  
+  try {
+    const report = await runLintCheck(allBookmarks, settings);
+    showHealthLintReport(report, 'lint');
+  } catch (e) {
+    showToast('❌ Lint check failed: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 Lint';
+  }
+});
+
+// Health & Lint Report Display
+function showHealthLintReport(report, type) {
+  const modal = document.getElementById('health-lint-modal');
+  const title = document.getElementById('report-title');
+  const summary = document.getElementById('report-summary');
+  const list = document.getElementById('issues-list');
+  const timestamp = document.getElementById('report-timestamp');
+  
+  title.textContent = type === 'health' ? 
+    '🏥 Health Check Report' : '🔍 Lint Report';
+  
+  // Set report timestamp
+  timestamp.textContent = new Date(report.timestamp).toLocaleString();
+  
+  // Render summary cards
+  const summaryEntries = Object.entries(report.summary)
+    .filter(([key]) => key !== 'total_issues')
+    .sort((a, b) => b[1] - a[1]);
+  
+  summary.innerHTML = summaryEntries
+    .map(([key, count]) => 
+      `<div class="summary-card">
+        <span class="label">${formatReportLabel(key)}</span>
+        <span class="value">${count}</span>
+      </div>`
+    ).join('');
+  
+  // Render issues
+  if (report.issues.length === 0) {
+    list.innerHTML = '<p style="color: #0d652d; text-align: center; padding: 20px;">✅ No issues found!</p>';
+  } else {
+    list.innerHTML = report.issues
+      .map(issue => {
+        let html = `<div class="issue-item severity-${issue.severity}">
+          <div class="issue-type">${formatIssueType(issue.type)}</div>
+          <div class="issue-message">${escapeHtml(issue.message)}</div>`;
+        
+        if (issue.suggestion) {
+          html += `<div class="issue-suggestion">💡 ${escapeHtml(issue.suggestion)}</div>`;
+        }
+        
+        if (issue.variations) {
+          html += `<div style="font-size: 11px; margin-top: 6px; color: #5f6368;">
+            Variations: ${issue.variations.map(v => `<code>${escapeHtml(v)}</code>`).join(', ')}
+          </div>`;
+        }
+        
+        html += '</div>';
+        return html;
+      }).join('');
+  }
+  
+  // Show auto-fix button only for health checks
+  const autoFixBtn = document.getElementById('report-auto-fix');
+  autoFixBtn.style.display = type === 'health' ? 'block' : 'none';
+  if (autoFixBtn.style.display === 'block') {
+    // Store report for auto-fix
+    autoFixBtn._report = report;
+    autoFixBtn.onclick = () => autoFixHealthIssues(report);
+  }
+  
+  // Set up tab switching
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+  tabBtns.forEach(btn => {
+    btn.onclick = () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabPanes.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    };
+  });
+  
+  // Show modal
+  modal.classList.remove('hidden');
+}
+
+function formatReportLabel(key) {
+  return key
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function formatIssueType(type) {
+  return type
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+// Auto-fix Health Issues
+async function autoFixHealthIssues(report) {
+  const btn = document.getElementById('report-auto-fix');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Fixing...';
+  
+  let fixed = 0;
+  
+  try {
+    // 1. Delete empty bookmarks
+    const emptyIds = report.issues
+      .filter(i => i.type === 'empty_bookmark')
+      .map(i => i.id);
+    
+    for (const id of emptyIds) {
+      await deleteBookmark(id);
+      fixed++;
+    }
+    
+    // 2. Delete bookmarks with missing URLs
+    const missingUrlIds = report.issues
+      .filter(i => i.type === 'missing_url')
+      .map(i => i.id);
+    
+    for (const id of missingUrlIds) {
+      await deleteBookmark(id);
+      fixed++;
+    }
+    
+    // 3. Normalize concept names
+    for (const issue of report.issues) {
+      if (issue.type === 'inconsistent_concept_naming') {
+        allBookmarks.forEach(b => {
+          if (b.concepts) {
+            b.concepts.forEach(c => {
+              if (normalizeConceptName(c.name) === issue.normalized) {
+                c.name = issue.normalized;
+              }
+            });
+          }
+        });
+        fixed += issue.affected_count || 1;
+      }
+    }
+    
+    // 4. Normalize entity names
+    for (const issue of report.issues) {
+      if (issue.type === 'inconsistent_entity_naming') {
+        allBookmarks.forEach(b => {
+          if (b.entities) {
+            b.entities.forEach(e => {
+              if (normalizeEntityName(e.name, e.type) === issue.normalized) {
+                e.name = issue.normalized;
+              }
+            });
+          }
+        });
+        fixed += issue.affected_count || 1;
+      }
+    }
+    
+    // 5. Normalize keyword names
+    for (const issue of report.issues) {
+      if (issue.type === 'inconsistent_keyword_naming') {
+        allBookmarks.forEach(b => {
+          if (b.keywords) {
+            b.keywords.forEach(k => {
+              if (normalizeKeywordName(k.word) === issue.normalized) {
+                k.word = issue.normalized;
+              }
+            });
+          }
+        });
+        fixed += issue.affected_count || 1;
+      }
+    }
+    
+    // 6. Regenerate stale metadata
+    const staleIds = report.issues
+      .filter(i => i.type === 'stale_metadata')
+      .map(i => i.id);
+    
+    for (const id of staleIds) {
+      const b = allBookmarks.find(x => x.id === id);
+      if (b) {
+        try {
+          const extracted = await extractBookmarkMetadata(b.title, b.url, b.summary, b.pageMeta);
+          await updateBookmark(id, {
+            concepts: extracted.concepts,
+            entities: extracted.entities,
+            keywords: extracted.keywords,
+            extraction_timestamp: new Date().toISOString(),
+            extraction_confidence: extracted.extraction_confidence
+          });
+          fixed++;
+        } catch (e) {
+          console.warn('Stale metadata fix failed for', id, e);
+        }
+      }
+    }
+    
+    // Reload and refresh
+    allBookmarks = await getBookmarks();
+    renderAll();
+    
+    btn.textContent = `✅ Fixed ${fixed} issues`;
+    showToast(`✅ Auto-fixed ${fixed} items`);
+    
+    // Close modal after success
+    setTimeout(() => {
+      document.getElementById('health-lint-modal').classList.add('hidden');
+    }, 1500);
+  } catch (e) {
+    console.error('Auto-fix error:', e);
+    btn.textContent = '❌ Error during fix';
+    showToast('❌ Auto-fix failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => {
+      btn.textContent = originalText;
+    }, 2000);
+  }
+}
+
+// Close health-lint modal
+document.getElementById('report-close').addEventListener('click', () => {
+  document.getElementById('health-lint-modal').classList.add('hidden');
+});
+
+document.getElementById('report-save').addEventListener('click', () => {
+  const title = document.getElementById('report-title').textContent;
+  const timestamp = document.getElementById('report-timestamp').textContent;
+  const summary = Array.from(document.querySelectorAll('.summary-card'))
+    .map(card => `${card.querySelector('.label').textContent}: ${card.querySelector('.value').textContent}`)
+    .join('\n');
+  
+  const issues = Array.from(document.querySelectorAll('.issue-item'))
+    .map(item => `- ${item.querySelector('.issue-type').textContent}: ${item.querySelector('.issue-message').textContent}`)
+    .join('\n');
+  
+  const content = `${title}\nGenerated: ${timestamp}\n\nSummary:\n${summary}\n\nIssues:\n${issues || 'None'}`;
+  
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `health-lint-report-${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  
+  showToast('💾 Report saved!');
+});
 
 // Init — default graph view
 document.getElementById('list-view').style.display = 'none';
