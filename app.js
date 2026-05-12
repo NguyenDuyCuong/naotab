@@ -214,6 +214,67 @@ function renderList(bookmarks) {
   });
 }
 
+// ── Graph Data Building ────────────────────────────────────────────────────────
+/**
+ * buildEdgesFromTags(bookmarks)
+ *
+ * Extracts graph edges from bookmark tags. When multiple bookmarks share a tag,
+ * creates an edge between them.
+ *
+ * @param {Array} bookmarks - Array of bookmark objects with tags property
+ * @returns {Array} Array of edge objects { from, to, type, label, confidence }
+ *
+ * Algorithm:
+ *  1. Build a map of tag -> [bookmarkIds]
+ *  2. For each tag, create edges between all pairs of bookmarks with that tag
+ *  3. Deduplicate edges by (from, to) pair
+ *  4. Skip self-loops (from === to)
+ */
+function buildEdgesFromTags(bookmarks) {
+  const edges = [];
+  const seen = new Set(); // Track (from, to) pairs to avoid duplicates
+
+  // Build tag -> [bookmarkIds] map
+  const tagMap = {};
+  bookmarks.forEach(b => {
+    if (b.tags && Array.isArray(b.tags)) {
+      b.tags.forEach(tag => {
+        if (!tagMap[tag]) tagMap[tag] = [];
+        tagMap[tag].push(b.id);
+      });
+    }
+  });
+
+  // For each tag, connect all bookmarks with that tag
+  Object.entries(tagMap).forEach(([tag, bookmarkIds]) => {
+    // Create edges between all pairs of bookmarks with this tag
+    for (let i = 0; i < bookmarkIds.length; i++) {
+      for (let j = i + 1; j < bookmarkIds.length; j++) {
+        const from = bookmarkIds[i];
+        const to = bookmarkIds[j];
+
+        // Skip self-loops
+        if (from === to) continue;
+
+        // Deduplicate by checking if we've already created an edge for this pair
+        const key = `${from}-${to}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          edges.push({
+            from,
+            to,
+            type: 'tag',
+            label: tag,
+            confidence: 1.0
+          });
+        }
+      }
+    }
+  });
+
+  return edges;
+}
+
 // ── Graph view ─────────────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   const svg = d3.select('#graph-svg');

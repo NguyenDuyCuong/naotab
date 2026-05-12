@@ -2,14 +2,22 @@
 
 > **Stack:** raw-http | none | unknown | python
 
-> 0 routes | 0 models | 0 components | 1 lib files | 0 env vars | 0 middleware
-> **Token savings:** this file is ~100 tokens. Without it, AI exploration would cost ~1,900 tokens. **Saves ~1,800 tokens per conversation.**
-> **Last scanned:** 2026-05-12 05:17 — re-run after significant changes
+> 0 routes | 0 models | 0 components | 2 lib files | 0 env vars | 0 middleware
+> **Token savings:** this file is ~200 tokens. Without it, AI exploration would cost ~2,400 tokens. **Saves ~2,200 tokens per conversation.**
+> **Last scanned:** 2026-05-12 06:23 — re-run after significant changes
 
 ---
 
 # Libraries
 
+- `build_graph.py`
+  - function read_file: (path) -> str
+  - function call_llm: (prompt, model_env, default_model, max_tokens) -> str
+  - function sha256: (text) -> str
+  - function all_wiki_pages: () -> list[Path]
+  - function extract_wikilinks: (content) -> list[str]
+  - function extract_frontmatter_type: (content) -> str
+  - _...16 more_
 - `main.py` — function main: ()
 
 ---
