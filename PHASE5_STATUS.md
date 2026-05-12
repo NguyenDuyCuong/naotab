@@ -1,4 +1,4 @@
-# 🎊 PHASE 5 COMPLETE - naoTab Knowledge Graph Evolution
+# 🎊 PHASE 5 COMPLETE - bookmark-vault Knowledge Graph Evolution
 
 ## Project Timeline
 

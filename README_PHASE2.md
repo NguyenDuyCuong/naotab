@@ -3,7 +3,7 @@
 ## ✅ STATUS: COMPLETE & PRODUCTION READY
 
 **Date:** 2024  
-**Component:** naoTab - Chrome Extension Graph Visualization  
+**Component:** bookmark-vault - Chrome Extension Graph Visualization  
 **Phase:** 2 - Graph Visualization with vis.js  
 **Quality Score:** ⭐⭐⭐⭐⭐ (5/5)
 
@@ -86,7 +86,7 @@
 
 ### Run Unit Tests
 ```bash
-cd C:\Users\cuong\workspace\naotab
+cd C:\Users\cuong\workspace\bookmark-vault
 node test_graph_logic.js
 ```
 

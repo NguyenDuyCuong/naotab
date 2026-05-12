@@ -10,8 +10,8 @@
 ## 🚀 Quick Test (5 Minutes)
 
 ```bash
-1. chrome://extensions/ → 🔄 Reload "naoTab"
-2. Open naoTab app.js
+1. chrome://extensions/ → 🔄 Reload "bookmark-vault"
+2. Open bookmark-vault app.js
 3. Create 10 bookmarks (use script below)
 4. Click "📊 Export Graph"
 5. Click "📥 Export"
@@ -83,7 +83,7 @@ console.log(`HTML: ${(html.length/1024).toFixed(1)}KB`);
 - [ ] Click button → modal appears
 - [ ] Modal has options for filters/colors
 - [ ] Click "📥 Export" → file downloads
-- [ ] File name: `naotab-graph-YYYY-MM-DD.html`
+- [ ] File name: `bookmark-vault-graph-YYYY-MM-DD.html`
 - [ ] File size: <50KB
 - [ ] Open HTML in new tab
 - [ ] Graph renders (nodes visible)

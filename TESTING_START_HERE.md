@@ -23,12 +23,12 @@ Two things are now connected and ready to test:
 ```
 Open Chrome
 Go to: chrome://extensions/
-Find "naoTab"
+Find "bookmark-vault"
 Click the 🔄 Reload button
 ```
 
 ### 2. Create Test Data
-Open a new tab and run this in the **naoTab popup console**:
+Open a new tab and run this in the **bookmark-vault popup console**:
 
 ```javascript
 async function quickSetup() {
@@ -60,12 +60,12 @@ quickSetup();
 ```
 
 ### 3. Test Export
-1. Click naoTab extension icon
+1. Click bookmark-vault extension icon
 2. Click the app.js link to open full-page app
 3. You should see a graph with 10 nodes
 4. Click "📊 Export Graph" button (top toolbar)
 5. Modal appears → Click "📥 Export"
-6. File `naotab-graph-YYYY-MM-DD.html` downloads
+6. File `bookmark-vault-graph-YYYY-MM-DD.html` downloads
 7. Open the HTML file in a new tab
 8. **You should see the interactive graph!**
 
@@ -253,7 +253,7 @@ showExportModal() displays dialog
 User selects options:
   - Include current filters? (Y/N)
   - Use community colors? (Y/N)
-  - Filename: naotab-graph-YYYY-MM-DD.html
+  - Filename: bookmark-vault-graph-YYYY-MM-DD.html
            ↓
 User clicks "📥 Export"
            ↓
@@ -269,7 +269,7 @@ Backend pipeline executes:
            ↓
 downloadFile() triggers save
            ↓
-Browser download: naotab-graph-2024-01-15.html (45KB)
+Browser download: bookmark-vault-graph-2024-01-15.html (45KB)
            ↓
 User opens HTML file
            ↓

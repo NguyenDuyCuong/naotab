@@ -9,7 +9,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in naoTab, **please do not open a public GitHub issue**.
+If you discover a security vulnerability in bookmark-vault, **please do not open a public GitHub issue**.
 
 Instead, report it privately by emailing: **bsq@estuary.solutions**
 
@@ -23,7 +23,7 @@ You can expect a response within **7 days**. If the issue is confirmed, a fix wi
 
 ## Scope
 
-naoTab runs entirely locally inside your browser — there is no server, no backend, and no data transmission except for optional AI API calls that you configure yourself. The main security considerations are:
+bookmark-vault runs entirely locally inside your browser — there is no server, no backend, and no data transmission except for optional AI API calls that you configure yourself. The main security considerations are:
 
 - **AI API keys** — stored in `chrome.storage.local`, never transmitted except to the AI provider you configure
 - **Tab data** — bookmarks stay on your device in `chrome.storage.local`

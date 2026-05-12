@@ -230,7 +230,7 @@ document.getElementById('btn-export-graph').addEventListener('click', () => {
          ↓
 💾 downloadFile() triggers browser download
          ↓
-📄 File saved: naotab-graph-2024-01-15.html
+📄 File saved: bookmark-vault-graph-2024-01-15.html
          ↓
 🌐 User opens HTML file
          ↓

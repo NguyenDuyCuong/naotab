@@ -2,7 +2,7 @@
 
 ## Summary
 
-Phase 6a successfully implements Schema v6, Universal Node Panel, Naming Normalization, and Graph Click Handlers for naoTab.
+Phase 6a successfully implements Schema v6, Universal Node Panel, Naming Normalization, and Graph Click Handlers for bookmark-vault.
 
 ### Tasks Completed
 

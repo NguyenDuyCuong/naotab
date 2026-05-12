@@ -42,7 +42,7 @@
 
 [  ] Open Chrome
 [  ] Go to: chrome://extensions/
-[  ] Find "naoTab" extension
+[  ] Find "bookmark-vault" extension
 [  ] Click the 🔄 "Reload" button
 [  ] Wait for reload to complete
 [  ] Verify no errors in DevTools
@@ -50,7 +50,7 @@
 
 ## STEP 2: CREATE TEST DATA (2-3 minutes)
 
-[  ] Click naoTab extension icon
+[  ] Click bookmark-vault extension icon
 [  ] Click the app.js link to open full-page view
 [  ] Open DevTools console (F12)
 [  ] Paste the test data creation script:
@@ -89,10 +89,10 @@
 [  ] Look at checkboxes:
      [  ] "Include current filters (tags, search)" - checked
      [  ] "Use community colors" - checked
-[  ] See filename field: naotab-graph-YYYY-MM-DD.html
+[  ] See filename field: bookmark-vault-graph-YYYY-MM-DD.html
 [  ] Click "📥 Export" button
 [  ] Wait for download to complete
-[  ] Verify: File named "naotab-graph-YYYY-MM-DD.html" downloaded
+[  ] Verify: File named "bookmark-vault-graph-YYYY-MM-DD.html" downloaded
 [  ] Check: File size in Downloads folder (should be <50KB)
 
 

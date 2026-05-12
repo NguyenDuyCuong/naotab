@@ -1,7 +1,7 @@
 # Phase 3C: Export Helpers — Implementation Complete ✅
 
 ## 🎯 Task Overview
-Implement export functionality for the naoTab graph visualization, including:
+Implement export functionality for the bookmark-vault graph visualization, including:
 1. **downloadFile()** - Helper function to trigger browser downloads
 2. **Export Button** - Add UI button to topbar
 3. **Export Modal** - Options dialog with customization

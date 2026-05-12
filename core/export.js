@@ -54,7 +54,7 @@ function bookmarkToObsidianMd(bookmark) {
     tagsYaml,
     `date_saved: ${savedAt}`,
     `date_updated: ${updatedAt}`,
-    `source: naoTab`,
+    `source: bookmark-vault`,
     '---',
   ].filter(line => line !== '').join('\n');
 
@@ -65,7 +65,7 @@ function bookmarkToObsidianMd(bookmark) {
   if (bookmark.tags && bookmark.tags.length > 0) {
     parts.push(`## Tags\n\n${bookmark.tags.map(t => `#${t}`).join(' ')}\n`);
   }
-  parts.push(`---\n*Saved via [naoTab](https://github.com/bsquang/naotab) on ${savedAt}*`);
+  parts.push(`---\n*Saved via [bookmark-vault](https://github.com/bsquang/bookmark-vault) on ${savedAt}*`);
 
   return { filename, content: frontmatter + '\n\n' + parts.join('\n') };
 }

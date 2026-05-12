@@ -31,7 +31,7 @@ edges = [
 `<!DOCTYPE html>
 <html>
 <head>
-  <title>naoTab Graph</title>
+  <title>bookmark-vault Graph</title>
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   ...
 </head>
@@ -58,7 +58,7 @@ edges = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>naoTab Graph Export</title>
+    <title>bookmark-vault Graph Export</title>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
         /* CSS here */

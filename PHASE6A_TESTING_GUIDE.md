@@ -5,7 +5,7 @@
 ### 1. Load the Extension
 1. Open Chrome
 2. Navigate to: `chrome://extensions/`
-3. Load unpacked: `C:\Users\cuong\workspace\naotab`
+3. Load unpacked: `C:\Users\cuong\workspace\bookmark-vault`
 4. Open the extension app page
 
 ### 2. Test Normalization Functions (Console)

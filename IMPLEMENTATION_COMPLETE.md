@@ -86,7 +86,7 @@ downloadFile(html, filename)
 ### Step 1: Reload Extension
 ```
 Chrome → Manage Extensions (chrome://extensions/)
-Find naoTab
+Find bookmark-vault
 Click 🔄 Reload button
 ```
 
@@ -109,11 +109,11 @@ quickTest();
 ```
 
 ### Step 3: Test Export Feature
-1. Open naoTab app.js full view
+1. Open bookmark-vault app.js full view
 2. Click "📊 Export Graph" (top toolbar)
 3. Modal appears with options
 4. Click "📥 Export"
-5. File downloads as `naotab-graph-YYYY-MM-DD.html`
+5. File downloads as `bookmark-vault-graph-YYYY-MM-DD.html`
 6. Open HTML file in new tab
 7. Verify:
    - [ ] Graph renders
@@ -150,7 +150,7 @@ console.log(typeof showExportModal);             // function
 
 ### Export Verification
 - [ ] File downloads successfully
-- [ ] File has correct name: `naotab-graph-YYYY-MM-DD.html`
+- [ ] File has correct name: `bookmark-vault-graph-YYYY-MM-DD.html`
 - [ ] File size is reasonable (<50KB for 10 items, <150KB for 500)
 - [ ] File opens in browser
 - [ ] No "Failed to load" errors

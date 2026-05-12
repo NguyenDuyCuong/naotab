@@ -1,4 +1,4 @@
-# Phase 4 Testing Results — naoTab Export Feature
+# Phase 4 Testing Results — bookmark-vault Export Feature
 
 **Date:** [To be filled during testing]  
 **Tester:** [Your name]  
@@ -8,7 +8,7 @@
 
 ## Overview
 
-This document tracks the validation of the naoTab graph export feature across 4 test scenarios:
+This document tracks the validation of the bookmark-vault graph export feature across 4 test scenarios:
 1. Small Dataset (10-50 bookmarks)
 2. Large Dataset (500-1000 bookmarks)
 3. CSP Compliance
@@ -19,7 +19,7 @@ This document tracks the validation of the naoTab graph export feature across 4 
 ## Setup Checklist
 
 Before starting tests, verify:
-- [ ] Extension version: Check popup → should show naoTab v0.19.1+
+- [ ] Extension version: Check popup → should show bookmark-vault v0.19.1+
 - [ ] Button present: Look for "📊 Export Graph" button in app.js view
 - [ ] CSP policy: manifest.json includes `https://unpkg.com` in script_src
 - [ ] DevTools console: No errors on app.js load
@@ -30,7 +30,7 @@ Before starting tests, verify:
 ## Test 1: Small Dataset (10-50 bookmarks)
 
 ### Setup
-1. Open naoTab popup (`chrome-extension://[id]/popup.html`)
+1. Open bookmark-vault popup (`chrome-extension://[id]/popup.html`)
 2. Create 5-10 test bookmarks with mixed tags:
    - Bookmark 1: `["rust", "web"]`
    - Bookmark 2: `["rust", "async"]`
@@ -91,7 +91,7 @@ createSmallDataset();
 - [ ] Modal appears with options
 - [ ] Shows: "X node(s) will be exported"
 - [ ] Click "📥 Export"
-- [ ] File `naotab-graph-YYYY-MM-DD.html` downloads
+- [ ] File `bookmark-vault-graph-YYYY-MM-DD.html` downloads
 - [ ] File size: <50KB expected
 
 **HTML Validity:**
@@ -202,7 +202,7 @@ Total: ___ ms
 - [ ] No UI blocking during export
 
 **3. Downloaded File:**
-- [ ] File `naotab-graph-YYYY-MM-DD.html` downloads
+- [ ] File `bookmark-vault-graph-YYYY-MM-DD.html` downloads
 - [ ] File size: expected <150KB (500 bookmarks)
   - Actual size: ___KB
 - [ ] File is valid HTML (can open in browser)

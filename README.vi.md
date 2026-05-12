@@ -1,4 +1,4 @@
-# 🗂️ naoTab — Kho kiến thức cá nhân từ browser tabs
+# 🗂️ bookmark-vault — Kho kiến thức cá nhân từ browser tabs
 
 > 🇬🇧 [View English version](./README.md)
 
@@ -6,7 +6,7 @@ Chrome Extension (Manifest V3) biến các tab trình duyệt thành một **kho
 
 ---
 
-![naoTab Overview](./assets/screenshot-overview.png)
+![bookmark-vault Overview](./assets/screenshot-overview.png)
 
 ---
 
@@ -132,7 +132,7 @@ AI **tắt theo mặc định**. Gợi ý tags offline (keyword + domain) luôn 
 Sau khi sửa file, mở popup và nhấn **🔄** để reload extension.
 
 ```
-naoTab/
+bookmark-vault/
 ├── manifest.json              # Manifest V3
 ├── popup.html / popup.css / popup.js   # Popup extension
 ├── app.html / app.js          # Trang Knowledge Base

@@ -272,7 +272,7 @@ Possible Phase 6d/6e features:
    - Open `chrome://extensions`
    - Enable "Developer mode"
    - Click "Load unpacked"
-   - Select naotab directory
+   - Select bookmark-vault directory
 
 2. **Test Implementation:**
    - Open `app.html` in extension
@@ -305,7 +305,7 @@ All deliverables are in place:
 - ✅ Comprehensive testing and documentation
 - ✅ Full integration with existing features
 
-The system provides enterprise-grade data quality monitoring while maintaining the lightweight, fast performance naoTab is known for.
+The system provides enterprise-grade data quality monitoring while maintaining the lightweight, fast performance bookmark-vault is known for.
 
 **Total Implementation Time: ~3 hours**
 **Total Lines of Code: ~1,000 lines**

@@ -18,7 +18,7 @@ Two critical items for the export feature are now ready:
 ### 1. Reload Extension
 ```
 Chrome → Manage Extensions (chrome://extensions/)
-Find "naoTab" → Click 🔄 Reload
+Find "bookmark-vault" → Click 🔄 Reload
 ```
 
 ### 2. Create Test Data
@@ -48,7 +48,7 @@ test();
 ### 3. Test Export
 1. Click "📊 Export Graph" button (top toolbar)
 2. Modal appears → Click "📥 Export"
-3. File downloads: `naotab-graph-YYYY-MM-DD.html`
+3. File downloads: `bookmark-vault-graph-YYYY-MM-DD.html`
 4. **Open the HTML file in new tab**
 5. ✅ **If graph renders: TEST PASSED!**
 

@@ -77,8 +77,8 @@ Respond with ONLY valid JSON, no explanation.`;
   } else {
     headers['Authorization'] = `Bearer ${settings.aiApiKey}`;
     if (isOpenRouter) {
-      headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
-      headers['X-Title'] = 'naoTab';
+      headers['HTTP-Referer'] = 'https://github.com/bsquang/bookmark-vault';
+      headers['X-Title'] = 'bookmark-vault';
     }
     endpoint = `${settings.aiBaseUrl}/chat/completions`;
     body = { model: settings.aiModel, max_tokens: 256, messages: [{ role: 'user', content: prompt }] };
@@ -137,8 +137,8 @@ Example: {"tags":["rust","performance","async"],"summary":"Deep dive into async 
   } else {
     headers['Authorization'] = `Bearer ${settings.aiApiKey}`;
     if (isOpenRouter) {
-      headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
-      headers['X-Title'] = 'naoTab';
+      headers['HTTP-Referer'] = 'https://github.com/bsquang/bookmark-vault';
+      headers['X-Title'] = 'bookmark-vault';
     }
     endpoint = `${settings.aiBaseUrl}/chat/completions`;
     body = { model: settings.aiModel, max_tokens: 256, messages: [{ role: 'user', content: prompt }] };
@@ -238,8 +238,8 @@ Return ONLY valid JSON, nothing else.`;
     } else {
       headers['Authorization'] = `Bearer ${settings.aiApiKey}`;
       if (isOpenRouter) {
-        headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
-        headers['X-Title'] = 'naoTab';
+        headers['HTTP-Referer'] = 'https://github.com/bsquang/bookmark-vault';
+        headers['X-Title'] = 'bookmark-vault';
       }
       endpoint = `${settings.aiBaseUrl}/chat/completions`;
       body = { model: settings.aiModel, max_tokens: 512, messages: [{ role: 'user', content: prompt }] };

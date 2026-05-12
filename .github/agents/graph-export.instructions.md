@@ -1,4 +1,4 @@
-# naoTab Graph Export Feature — Agent Instructions
+# bookmark-vault Graph Export Feature — Agent Instructions
 
 ## 🎯 Phase 1: Build Edges from Bookmark Tags
 

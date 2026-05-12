@@ -117,12 +117,12 @@ Start with: **TESTING_START_HERE.md**
 ### 2. Setup (3 minutes)
 ```
 Chrome → Manage Extensions (chrome://extensions/)
-Find "naoTab"
+Find "bookmark-vault"
 Click 🔄 Reload button
 ```
 
 ### 3. Create Test Data (2 minutes)
-Open naoTab app.js console, paste:
+Open bookmark-vault app.js console, paste:
 ```javascript
 async function quickTest() {
   const items = [
@@ -148,7 +148,7 @@ quickTest();
 ### 4. Test Export (3 minutes)
 1. Click "📊 Export Graph" button (top toolbar)
 2. Modal appears → Click "📥 Export"
-3. File downloads: `naotab-graph-YYYY-MM-DD.html`
+3. File downloads: `bookmark-vault-graph-YYYY-MM-DD.html`
 4. Open HTML file in new tab
 5. ✅ If graph renders: Basic test PASSED!
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# build.sh — Package naoTab into a distributable .zip
+# build.sh — Package bookmark-vault into a distributable .zip
 # Version is read from manifest.json automatically
 
 set -e
@@ -15,9 +15,9 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
-OUTPUT="naotab-v${VERSION}.zip"
+OUTPUT="bookmark-vault-v${VERSION}.zip"
 
-echo "📦 Building naoTab v${VERSION}..."
+echo "📦 Building bookmark-vault v${VERSION}..."
 
 # Remove old build if exists
 rm -f "$OUTPUT"

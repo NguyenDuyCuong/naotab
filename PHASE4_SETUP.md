@@ -59,7 +59,7 @@ Browser opens file with vis.js visualization
 ### 1. Reload Extension
 ```
 Chrome → Manage Extensions (chrome://extensions/)
-Find "naoTab"
+Find "bookmark-vault"
 Click 🔄 Reload button
 ```
 
@@ -88,7 +88,7 @@ createTestData();
 2. Click "📊 Export Graph" button (topbar)
 3. Modal appears with options
 4. Click "📥 Export"
-5. File downloads as `naotab-graph-YYYY-MM-DD.html`
+5. File downloads as `bookmark-vault-graph-YYYY-MM-DD.html`
 6. Open HTML file in new tab
 7. Graph should render with vis.js
 

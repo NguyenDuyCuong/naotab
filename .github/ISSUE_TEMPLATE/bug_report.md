@@ -21,7 +21,7 @@ What actually happened.
 ## Environment
 - Chrome version:
 - OS:
-- naoTab version:
+- bookmark-vault version:
 
 ## Console errors
-Any errors from `chrome://extensions` → naoTab → Errors, or DevTools console.
+Any errors from `chrome://extensions` → bookmark-vault → Errors, or DevTools console.

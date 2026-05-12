@@ -1,4 +1,4 @@
-# naoTab — Chrome Extension
+# bookmark-vault — Chrome Extension
 
 ## Project overview
 
@@ -11,12 +11,12 @@ UI language: **English**. Codebase comments: mixed EN/VI.
 ## File structure
 
 ```
-naoTab/
+bookmark-vault/
 ├── manifest.json        # Manifest V3, permissions: tabs + storage + unlimitedStorage + scripting
 ├── popup.html/css/js    # Popup — view tabs, save, export
 ├── app.html/js          # Knowledge Base full-page
 ├── settings.html/js     # AI provider config page
-├── build.sh             # Build script → naotab-vX.Y.Z.zip
+├── build.sh             # Build script → bookmark-vault-vX.Y.Z.zip
 ├── core/
 │   ├── schema.js        # ⚠️ Single source of truth for data structure — never remove fields
 │   ├── storage.js       # Bookmarks CRUD + settings (reads only, no business logic)
@@ -153,7 +153,7 @@ Key features:
 **OpenAI-compatible** (OpenAI, Groq, Ollama, OpenRouter, etc.):
 - Endpoint: `{baseUrl}/chat/completions`
 - Header: `Authorization: Bearer {apiKey}`
-- OpenRouter also needs: `HTTP-Referer: https://github.com/bsquang/naotab` + `X-Title: naoTab`
+- OpenRouter also needs: `HTTP-Referer: https://github.com/bsquang/bookmark-vault` + `X-Title: bookmark-vault`
 
 **Anthropic native**:
 - Detect: `baseUrl.includes('anthropic.com')`

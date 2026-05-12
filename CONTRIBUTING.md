@@ -1,4 +1,4 @@
-# Contributing to naoTab
+# Contributing to bookmark-vault
 
 Thanks for your interest in contributing! Here's how to get started.
 
@@ -12,7 +12,7 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Project structure
 
 ```
-naoTab/
+bookmark-vault/
 ├── popup.html / popup.css / popup.js   # Extension popup
 ├── app.html / app.js                   # Full-page Knowledge Base
 ├── settings.html / settings.js         # AI provider settings
