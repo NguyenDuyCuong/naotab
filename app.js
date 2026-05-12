@@ -1007,14 +1007,12 @@ function createD3Chart(data, allNodes) {
     .on("drag", dragged)
     .on("end", dragended));
 
-  // NEW in v5: Node click handling for both bookmarks and metadata nodes
+  // NEW in v5: Node click handling for all node types (bookmarks, concepts, entities, keywords)
   node.on("click", (event, d) => {
     event.stopPropagation();
     highlightNodeAndNeighbors(svg, d.id, links);
-    // Only open panel for bookmark nodes
-    if (d.type === 'bookmark') {
-      openNodePanel(d.id);
-    }
+    // Open panel for all types
+    openNodePanel(d.id, d.type || 'bookmark');
   });
 
   // Background click: reset highlight + close panel
@@ -1344,10 +1342,57 @@ function getContentTypeEmoji(type) {
 }
 
 // ── Node detail panel ──────────────────────────────────────────────────────────
-function openNodePanel(id) {
-  const b = allBookmarks.find(x => x.id === id);
+/**
+ * openNodePanel(nodeId, nodeType = 'bookmark')
+ * Universal panel that displays bookmarks, concepts, or entities.
+ * 
+ * For bookmarks: shows URL, summary, reason, tags, concepts, entities
+ * For concepts: shows AI + manual definitions, linked bookmarks, related entities
+ * For entities: shows type, AI + manual profiles, linked bookmarks, related concepts
+ */
+function openNodePanel(nodeId, nodeType = 'bookmark') {
+  panelId = nodeId;
+  
+  // Show/hide sections based on node type
+  const bookmarkSection = document.getElementById('panel-bookmark-section');
+  const conceptSection = document.getElementById('panel-concept-section');
+  const entitySection = document.getElementById('panel-entity-section');
+  
+  bookmarkSection.classList.add('hidden');
+  conceptSection.classList.add('hidden');
+  entitySection.classList.add('hidden');
+  
+  const openBtn = document.getElementById('panel-open-url');
+  const deleteBtn = document.getElementById('panel-delete');
+  
+  if (nodeType === 'bookmark') {
+    bookmarkSection.classList.remove('hidden');
+    openBtn.style.display = 'block';
+    deleteBtn.style.display = 'block';
+    openBookmarkPanel(nodeId);
+  } else if (nodeType === 'concept') {
+    conceptSection.classList.remove('hidden');
+    openBtn.style.display = 'none';
+    deleteBtn.style.display = 'none';
+    openConceptPanel(nodeId);
+  } else if (nodeType === 'entity') {
+    entitySection.classList.remove('hidden');
+    openBtn.style.display = 'none';
+    deleteBtn.style.display = 'none';
+    openEntityPanel(nodeId);
+  }
+  
+  document.getElementById('node-panel').classList.add('open');
+  updateSidebarNodeList();
+}
+
+/**
+ * openBookmarkPanel(bookmarkId)
+ * Render bookmark details in the panel.
+ */
+function openBookmarkPanel(bookmarkId) {
+  const b = allBookmarks.find(x => x.id === bookmarkId);
   if (!b) return;
-  panelId = id;
 
   const faviconEl = document.getElementById('panel-favicon');
   if (b.favIconUrl && b.favIconUrl.startsWith('http')) {
@@ -1362,29 +1407,25 @@ function openNodePanel(id) {
   document.getElementById('panel-reason').value = b.reason || '';
   document.getElementById('panel-tags').value = (b.tags || []).join(', ');
 
-  // NEW in v3: Show AI attribution and content type badges
+  // Show AI attribution and content type badges
   const badgesEl = document.getElementById('panel-badges');
   let badgesHtml = '<div class="panel-badges">';
   
-  // AI attribution badge
   if (b.ai_generated) {
     badgesHtml += '<span class="badge badge-ai-summary">🤖 AI Summary</span>';
   } else if (b.summary) {
     badgesHtml += '<span class="badge badge-manual">✍️ Manual</span>';
   }
   
-  // AI tags badge
   if (b.ai_tags) {
     badgesHtml += '<span class="badge badge-ai-tags">🤖 AI Tags</span>';
   }
   
-  // Content type badge
   if (b.content_type) {
     const emoji = getContentTypeEmoji(b.content_type);
     badgesHtml += '<span class="badge badge-content-type">' + emoji + ' ' + escapeHtml(b.content_type) + '</span>';
   }
   
-  // Reading time badge
   if (b.reading_time && b.reading_time > 0) {
     badgesHtml += '<span class="badge badge-reading-time">⏱️ ' + b.reading_time + ' min read</span>';
   }
@@ -1477,11 +1518,11 @@ function openNodePanel(id) {
 
     // Click connected item → navigate to that node
     connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
-      el.addEventListener('click', () => openNodePanel(el.dataset.id));
+      el.addEventListener('click', () => openNodePanel(el.dataset.id, 'bookmark'));
     });
   }
 
-  // NEW in v5: Display extracted metadata if available
+  // Display extracted metadata if available
   const extractedEl = document.getElementById('panel-extracted');
   if (extractedEl && b.ai_extracted_fields && b.ai_extracted_fields.length > 0) {
     let extractedHtml = '<div class="panel-extracted-label">✨ AI Extracted Metadata</div>';
@@ -1553,9 +1594,135 @@ function openNodePanel(id) {
   } else if (extractedEl) {
     extractedEl.innerHTML = '';
   }
+}
 
-  document.getElementById('node-panel').classList.add('open');
-  updateSidebarNodeList();
+/**
+ * openConceptPanel(conceptId)
+ * Render concept details (concept_bookmarkId_index format).
+ */
+function openConceptPanel(conceptId) {
+  // Parse concept ID: concept_bookmarkId_index
+  const parts = conceptId.split('_');
+  const bookmarkId = parts[1];
+  const index = parseInt(parts[2]);
+  
+  const b = allBookmarks.find(x => x.id === bookmarkId);
+  if (!b || !b.concepts || !b.concepts[index]) return;
+  
+  const concept = b.concepts[index];
+  
+  document.getElementById('panel-favicon').textContent = '🟢';
+  document.getElementById('panel-title').textContent = concept.name;
+  document.getElementById('panel-url').textContent = 'From: ' + escapeHtml(b.title);
+  
+  // Show badges
+  document.getElementById('panel-badges').innerHTML = 
+    '<div class="panel-badges">' +
+    '<span class="badge badge-content-type">🟢 Concept</span>' +
+    '<span class="badge badge-content-type">Relevance: ' + Math.round(concept.relevance * 100) + '%</span>' +
+    '</div>';
+  
+  // AI definition (read-only) and manual definition (editable)
+  document.getElementById('panel-concept-ai-def').value = concept.ai_definition || '';
+  document.getElementById('panel-concept-manual-def').value = concept.manual_definition || '';
+  
+  // Show related bookmarks (all concepts from same bookmark or related)
+  const metaEl = document.getElementById('panel-concept-meta');
+  metaEl.innerHTML = '<div class="panel-meta-label">Source</div>' +
+    '<div class="panel-meta-row">' +
+    '<span class="panel-meta-key">Bookmark</span>' +
+    '<span class="panel-meta-val">' + escapeHtml(b.title) + '</span>' +
+    '</div>';
+  
+  // Show related entities from same bookmark
+  const connectedEl = document.getElementById('panel-concept-connected');
+  if (b.entities && b.entities.length > 0) {
+    connectedEl.innerHTML =
+      '<div class="panel-connected-label">🔗 Related Entities (' + b.entities.length + ')</div>' +
+      b.entities.slice(0, 5).map((entity, idx) => {
+        return (
+          '<div class="connected-node-item" data-id="' + 'entity_' + b.id + '_' + idx + '">' +
+            '<span class="connected-node-favicon">🟠</span>' +
+            '<span class="connected-node-title">' + escapeHtml(entity.name) + '</span>' +
+            '<span class="connected-node-tags">' +
+            '<span class="connected-node-tag">' + escapeHtml(entity.type) + '</span>' +
+            '</span>' +
+          '</div>'
+        );
+      }).join('');
+    
+    connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
+      el.addEventListener('click', () => openNodePanel(el.dataset.id, 'entity'));
+    });
+  } else {
+    connectedEl.innerHTML = '';
+  }
+}
+
+/**
+ * openEntityPanel(entityId)
+ * Render entity details (entity_bookmarkId_index format).
+ */
+function openEntityPanel(entityId) {
+  // Parse entity ID: entity_bookmarkId_index
+  const parts = entityId.split('_');
+  const bookmarkId = parts[1];
+  const index = parseInt(parts[2]);
+  
+  const b = allBookmarks.find(x => x.id === bookmarkId);
+  if (!b || !b.entities || !b.entities[index]) return;
+  
+  const entity = b.entities[index];
+  
+  document.getElementById('panel-favicon').textContent = '🟠';
+  document.getElementById('panel-title').textContent = entity.name;
+  document.getElementById('panel-url').textContent = 'From: ' + escapeHtml(b.title);
+  
+  // Show badges
+  document.getElementById('panel-badges').innerHTML = 
+    '<div class="panel-badges">' +
+    '<span class="badge badge-content-type">🟠 Entity</span>' +
+    '<span class="badge badge-content-type">' + escapeHtml(entity.type) + '</span>' +
+    '</div>';
+  
+  // Entity type (read-only)
+  document.getElementById('panel-entity-type').value = entity.type || '';
+  
+  // AI profile (read-only) and manual profile (editable)
+  document.getElementById('panel-entity-ai-profile').value = entity.ai_profile || '';
+  document.getElementById('panel-entity-manual-profile').value = entity.manual_definition || '';
+  
+  // Show source bookmark
+  const metaEl = document.getElementById('panel-entity-meta');
+  metaEl.innerHTML = '<div class="panel-meta-label">Source</div>' +
+    '<div class="panel-meta-row">' +
+    '<span class="panel-meta-key">Bookmark</span>' +
+    '<span class="panel-meta-val">' + escapeHtml(b.title) + '</span>' +
+    '</div>';
+  
+  // Show related concepts from same bookmark
+  const connectedEl = document.getElementById('panel-entity-connected');
+  if (b.concepts && b.concepts.length > 0) {
+    connectedEl.innerHTML =
+      '<div class="panel-connected-label">🔗 Related Concepts (' + b.concepts.length + ')</div>' +
+      b.concepts.slice(0, 5).map((concept, idx) => {
+        return (
+          '<div class="connected-node-item" data-id="' + 'concept_' + b.id + '_' + idx + '">' +
+            '<span class="connected-node-favicon">🟢</span>' +
+            '<span class="connected-node-title">' + escapeHtml(concept.name) + '</span>' +
+            '<span class="connected-node-tags">' +
+            '<span class="connected-node-tag">' + Math.round(concept.relevance * 100) + '%</span>' +
+            '</span>' +
+          '</div>'
+        );
+      }).join('');
+    
+    connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
+      el.addEventListener('click', () => openNodePanel(el.dataset.id, 'concept'));
+    });
+  } else {
+    connectedEl.innerHTML = '';
+  }
 }
 
 function closeNodePanel() {

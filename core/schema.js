@@ -5,7 +5,7 @@
 //     Increment SCHEMA_VERSION when adding fields.
 //     Add a migration case in migrateBookmark() for each new version.
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 // Canonical shape of a bookmark object.
 // All fields must have a default value so old data is safe to migrate.
@@ -46,8 +46,8 @@ const BOOKMARK_DEFAULTS = {
   key_message:   '',         // One-liner summary of main point
   
   // NEW in v4: Extracted Knowledge
-  concepts:      [],         // [{name, relevance (0-1), type}, ...] - high-level ideas
-  entities:      [],         // [{name, type ('person'|'org'|'place'|'product'), value}, ...] - named entities
+  concepts:      [],         // [{name, relevance (0-1), type, manual_definition}, ...] - high-level ideas
+  entities:      [],         // [{name, type ('person'|'org'|'place'|'product'), value, manual_definition}, ...] - named entities
   keywords:      [],         // [{word, frequency (0-1), relevance (0-1)}, ...] - key terms
   key_statistics: [],        // [{stat, value, unit, confidence (0-1)}, ...] - numbers/metrics
   events:        [],         // [{name, date, importance (0-1)}, ...] - mentioned events
@@ -141,6 +141,16 @@ function migrateBookmark(raw) {
     b.ai_extracted_fields = [];
     b.extraction_confidence = 0;
     b.extraction_timestamp = null;
+  }
+
+  // v5 → v6: Add manual_definition fields to concepts and entities
+  if (v < 6) {
+    if (b.concepts && Array.isArray(b.concepts)) {
+      b.concepts = b.concepts.map(c => ({ ...c, manual_definition: null }));
+    }
+    if (b.entities && Array.isArray(b.entities)) {
+      b.entities = b.entities.map(e => ({ ...e, manual_definition: null }));
+    }
   }
 
   b.schemaVersion = SCHEMA_VERSION;
@@ -429,5 +439,58 @@ function isOptionalFieldSet(bookmark, field) {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'number') return value > 0;
   return true;
+}
+
+// ──────────────────────────────────────────────────────────────
+// NEW FUNCTIONS FOR v6: Naming Normalization
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * normalizeConceptName(name)
+ * Normalize concept names to lowercase kebab-case.
+ * Example: "Machine Learning" → "machine-learning"
+ */
+function normalizeConceptName(name) {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * normalizeEntityName(name, type)
+ * Normalize entity names to proper case.
+ * For acronyms: keep uppercase.
+ * For regular names: Title Case.
+ * Example: "microsoft" → "Microsoft", "GPT-4" → "GPT-4", "OPEN AI" → "Open Ai"
+ */
+function normalizeEntityName(name, type) {
+  if (!name) return '';
+  
+  // Check if it's already all uppercase (acronym)
+  if (type === 'acronym' || /^[A-Z]+(-[A-Z]+)*$/.test(name.trim())) {
+    return name.toUpperCase();
+  }
+  
+  // Title case: capitalize first letter of each word
+  return name
+    .trim()
+    .split(/\s+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * normalizeKeywordName(word)
+ * Normalize keywords to lowercase.
+ * Example: "Learning" → "learning"
+ */
+function normalizeKeywordName(word) {
+  if (!word) return '';
+  return word.toLowerCase().trim();
 }
 

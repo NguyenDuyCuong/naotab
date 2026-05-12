@@ -760,6 +760,10 @@
     }
     .panel-footer .btn-panel-save:hover { background: #1557b0; }
 
+    /* Panel sections (bookmark, concept, entity) */
+    .panel-section { display: flex; flex-direction: column; gap: 12px; }
+    .panel-section.hidden { display: none; }
+
     /* Toast */
     #toast {
       position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -991,31 +995,65 @@
     <button class="panel-close" id="panel-close">✕</button>
   </div>
   <div class="panel-body">
-    <div id="panel-ai-row" class="panel-ai-row hidden">
-      <button id="panel-btn-ai" class="btn-panel-ai">✨ AI Suggest</button>
-      <span id="panel-ai-status" class="panel-ai-status"></span>
-    </div>
-    <div class="panel-field">
-      <label>Summary</label>
-      <textarea id="panel-summary" rows="3" placeholder="Short summary of this page..."></textarea>
-    </div>
-    <div class="panel-field">
-      <label>Reason</label>
-      <textarea id="panel-reason" rows="2" placeholder="Why did you save this?"></textarea>
-    </div>
-    <div class="panel-field">
-      <label>Tags (comma separated)</label>
-      <input type="text" id="panel-tags" placeholder="e.g. react, typescript, tutorial" />
+    <!-- BOOKMARK SECTION (default) -->
+    <div id="panel-bookmark-section" class="panel-section">
+      <div id="panel-ai-row" class="panel-ai-row hidden">
+        <button id="panel-btn-ai" class="btn-panel-ai">✨ AI Suggest</button>
+        <span id="panel-ai-status" class="panel-ai-status"></span>
+      </div>
+      <div class="panel-field">
+        <label>Summary</label>
+        <textarea id="panel-summary" rows="3" placeholder="Short summary of this page..."></textarea>
+      </div>
+      <div class="panel-field">
+        <label>Reason</label>
+        <textarea id="panel-reason" rows="2" placeholder="Why did you save this?"></textarea>
+      </div>
+      <div class="panel-field">
+        <label>Tags (comma separated)</label>
+        <input type="text" id="panel-tags" placeholder="e.g. react, typescript, tutorial" />
+      </div>
+      <div class="panel-connected" id="panel-connected"></div>
+      <div class="panel-meta" id="panel-meta"></div>
+      <!-- NEW in v5: Extracted metadata section -->
+      <div class="panel-extracted" id="panel-extracted"></div>
     </div>
 
-    <div class="panel-connected" id="panel-connected"></div>
-    <div class="panel-meta" id="panel-meta"></div>
-    <!-- NEW in v5: Extracted metadata section -->
-    <div class="panel-extracted" id="panel-extracted"></div>
+    <!-- CONCEPT SECTION (hidden by default) -->
+    <div id="panel-concept-section" class="panel-section hidden">
+      <div class="panel-field">
+        <label>Definition (AI)</label>
+        <textarea id="panel-concept-ai-def" rows="3" placeholder="AI-generated definition..." readonly style="background: #f0f4ff;"></textarea>
+      </div>
+      <div class="panel-field">
+        <label>Definition (Manual)</label>
+        <textarea id="panel-concept-manual-def" rows="3" placeholder="Edit to override with your own definition..."></textarea>
+      </div>
+      <div class="panel-connected" id="panel-concept-connected"></div>
+      <div class="panel-meta" id="panel-concept-meta"></div>
+    </div>
+
+    <!-- ENTITY SECTION (hidden by default) -->
+    <div id="panel-entity-section" class="panel-section hidden">
+      <div class="panel-field">
+        <label>Type</label>
+        <input type="text" id="panel-entity-type" placeholder="person, organization, place, product, etc." readonly style="background: #f0f4ff;" />
+      </div>
+      <div class="panel-field">
+        <label>Profile (AI)</label>
+        <textarea id="panel-entity-ai-profile" rows="3" placeholder="AI-generated profile..." readonly style="background: #f0f4ff;"></textarea>
+      </div>
+      <div class="panel-field">
+        <label>Profile (Manual)</label>
+        <textarea id="panel-entity-manual-profile" rows="3" placeholder="Edit to override with your own profile..."></textarea>
+      </div>
+      <div class="panel-connected" id="panel-entity-connected"></div>
+      <div class="panel-meta" id="panel-entity-meta"></div>
+    </div>
   </div>
   <div class="panel-footer">
-    <button class="btn-open-url" id="panel-open-url">↗ Open</button>
-    <button class="btn-panel-delete" id="panel-delete">🗑️</button>
+    <button class="btn-open-url" id="panel-open-url" style="display:none;">↗ Open</button>
+    <button class="btn-panel-delete" id="panel-delete" style="display:none;">🗑️</button>
     <button class="btn-panel-save" id="panel-save">💾 Save</button>
   </div>
 </div>
@@ -1036,5 +1074,7 @@
 <script src="core/ai.js"></script>
 <script src="core/export.js"></script>
 <script src="app.js"></script>
+<!-- Test suite - comment out after verification -->
+<!-- <script src="test_phase6a.js"></script> -->
 </body>
 </html>
