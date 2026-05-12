@@ -14,12 +14,18 @@ body {
   justify-content: center;
   background: #f8f9fa;
   position: relative;
+  overflow: hidden;
 }
 
 #graph-view svg {
   width: 100%;
   height: 100%;
   background: #f8f9fa;
+  cursor: grab;
+}
+
+#graph-view svg:active {
+  cursor: grabbing;
 }
 
 svg circle {
@@ -29,6 +35,16 @@ svg circle {
 
 svg line {
   transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
+.graph-label {
+  font-size: 10px;
+  fill: #666;
+  opacity: 0.8;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 svg text {

@@ -721,6 +721,54 @@ function renderGraph(bookmarks) {
   container.appendChild(chart);
 }
 
+function truncateLabel(text, maxLen = 25) {
+  if (!text) return '';
+  return text.length > maxLen ? text.substring(0, maxLen) + '…' : text;
+}
+
+function computeFitTransform(nodes, width, height, padding = 0.85) {
+  if (!nodes || nodes.length === 0) {
+    return { scale: 1, translateX: 0, translateY: 0 };
+  }
+
+  if (nodes.length === 1) {
+    // Single node: center it
+    return { scale: 1, translateX: 0, translateY: 0 };
+  }
+
+  const xs = nodes.map(n => n.x);
+  const ys = nodes.map(n => n.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const extentX = maxX - minX || 1;
+  const extentY = maxY - minY || 1;
+
+  const scale = Math.min(width / extentX, height / extentY) * padding;
+  const translateX = -((minX + maxX) / 2) * scale;
+  const translateY = -((minY + maxY) / 2) * scale;
+
+  return { scale, translateX, translateY };
+}
+
+function tuneForces(simulation, nodeCount, edgeCount, links) {
+  const edgeRatio = edgeCount / Math.max(nodeCount, 1);
+
+  // Auto-tune based on graph density and size
+  const chargeStrength = nodeCount > 50 ? -400 : -300;
+  const linkDistance = edgeRatio > 2 ? 40 : 50;
+  const centerStrength = edgeCount > nodeCount * 1.5 ? 0.08 : 0.05;
+
+  simulation
+    .force("link", d3.forceLink(links).id(d => d.id).distance(linkDistance))
+    .force("charge", d3.forceManyBody().strength(chargeStrength))
+    .force("collide", d3.forceCollide(d => 3 + (d.reading_time || 5) / 2 + 3))
+    .force("x", d3.forceX(0).strength(centerStrength))
+    .force("y", d3.forceY(0).strength(centerStrength));
+}
+
 function createD3Chart(data, bookmarks) {
   const container = document.getElementById('graph-view');
   const width = container.clientWidth || 928;
@@ -729,12 +777,9 @@ function createD3Chart(data, bookmarks) {
   const links = data.links.map(d => ({...d}));
   const nodes = data.nodes.map(d => ({...d}));
 
-  // D3 force simulation
-  const simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d => d.id).distance(50))
-    .force("charge", d3.forceManyBody().strength(-300))
-    .force("x", d3.forceX(0).strength(0.05))
-    .force("y", d3.forceY(0).strength(0.05));
+  // D3 force simulation with initial tuning
+  const simulation = d3.forceSimulation(nodes);
+  tuneForces(simulation, nodes.length, links.length, links);
 
   const svg = d3.create("svg")
     .attr("width", width)
@@ -742,8 +787,19 @@ function createD3Chart(data, bookmarks) {
     .attr("viewBox", [-width / 2, -height / 2, width, height])
     .attr("style", "max-width: 100%; height: auto; background: #f8f9fa;");
 
+  // Zoom and pan functionality (TODO 2)
+  const g = svg.append("g").attr("class", "graph-content");
+  
+  const zoom = d3.zoom()
+    .scaleExtent([0.5, 3])
+    .on("zoom", (event) => {
+      g.attr("transform", event.transform);
+    });
+
+  svg.call(zoom);
+
   // Links
-  const link = svg.append("g")
+  const link = g.append("g")
     .attr("stroke", "#999")
     .attr("stroke-opacity", 0.6)
     .selectAll("line")
@@ -752,7 +808,7 @@ function createD3Chart(data, bookmarks) {
     .attr("stroke-width", d => Math.sqrt(d.value || 1));
 
   // Nodes
-  const node = svg.append("g")
+  const node = g.append("g")
     .attr("stroke", "#fff")
     .attr("stroke-width", 1.5)
     .selectAll("circle")
@@ -765,6 +821,20 @@ function createD3Chart(data, bookmarks) {
   // Node tooltips
   node.append("title")
     .text(d => bookmarks.find(b => b.id === d.id)?.title || d.id);
+
+  // Node labels (TODO 1)
+  const labels = g.append("g")
+    .attr("class", "graph-labels")
+    .selectAll("text")
+    .data(nodes)
+    .join("text")
+    .attr("class", "graph-label")
+    .attr("text-anchor", "middle")
+    .attr("pointer-events", "none")
+    .style("font-size", "10px")
+    .style("fill", "#666")
+    .style("opacity", 0.8)
+    .text(d => truncateLabel(bookmarks.find(b => b.id === d.id)?.title || d.id));
 
   // Drag behavior
   function dragstarted(event) {
@@ -807,6 +877,11 @@ function createD3Chart(data, bookmarks) {
     if (d.url) window.open(d.url, '_blank');
   });
 
+  // Track tick count for fit-to-bounds (TODO 3)
+  let tickCount = 0;
+  const maxTicks = 300;
+  let fitApplied = false;
+
   // Simulation tick
   simulation.on("tick", () => {
     link
@@ -818,9 +893,26 @@ function createD3Chart(data, bookmarks) {
     node
       .attr("cx", d => d.x)
       .attr("cy", d => d.y);
+
+    labels
+      .attr("x", d => d.x)
+      .attr("y", d => d.y + 3 + (d.reading_time || 5) / 2 + 12);
+
+    // Apply fit-to-bounds when simulation stabilizes
+    tickCount++;
+    if (!fitApplied && (simulation.alpha() < 0.01 || tickCount >= maxTicks)) {
+      fitApplied = true;
+      const fitTransform = computeFitTransform(nodes, width, height, 0.85);
+      const t = d3.zoomIdentity
+        .translate(fitTransform.translateX, fitTransform.translateY)
+        .scale(fitTransform.scale);
+      svg.transition()
+        .duration(500)
+        .call(zoom.transform, t);
+    }
   });
 
-  currentNetwork = { simulation, svg, links, nodes, data };
+  currentNetwork = { simulation, svg, links, nodes, data, zoom, g, labels };
   return svg.node();
 }
 
@@ -834,6 +926,9 @@ function highlightNodeAndNeighbors(svg, nodeId, links) {
   svg.selectAll("circle")
     .attr("opacity", d => (d.id === nodeId || neighbors.has(d.id)) ? 1 : 0.3);
 
+  svg.selectAll(".graph-label")
+    .attr("opacity", d => (d.id === nodeId || neighbors.has(d.id)) ? 0.9 : 0.2);
+
   svg.selectAll("line")
     .attr("stroke", d =>
       (d.source.id === nodeId || d.target.id === nodeId) ? '#1a73e8' : '#999'
@@ -845,6 +940,7 @@ function highlightNodeAndNeighbors(svg, nodeId, links) {
 
 function resetGraphHighlight(svg) {
   svg.selectAll("circle").attr("opacity", 1);
+  svg.selectAll(".graph-label").attr("opacity", 0.8);
   svg.selectAll("line")
     .attr("stroke", "#999")
     .attr("stroke-width", d => Math.sqrt(d.value || 1));

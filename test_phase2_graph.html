@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phase 2 Graph Test - naoTab</title>
+  <script src="vendor/vis-network.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    #graph {
+      width: 100vw;
+      height: 100vh;
+    }
+    #controls {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(10, 10, 30, 0.88);
+      padding: 14px;
+      border-radius: 10px;
+      z-index: 10;
+      max-width: 300px;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #controls h3 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      letter-spacing: 0.5px;
+    }
+    #search {
+      width: 100%;
+      padding: 6px 8px;
+      margin-bottom: 10px;
+      background: #222;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    #stats {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(10, 10, 30, 0.88);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .stat-item {
+      margin: 4px 0;
+    }
+    .stat-label {
+      color: #9ea3b0;
+    }
+    .stat-value {
+      color: #FF5722;
+      font-weight: bold;
+    }
+    #test-log {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(10, 10, 30, 0.88);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      max-height: 150px;
+      overflow-y: auto;
+      max-width: 300px;
+    }
+    .log-entry {
+      padding: 2px 0;
+      font-size: 11px;
+    }
+    .log-success { color: #4CAF50; }
+    .log-warning { color: #FF9800; }
+    .log-error { color: #f44336; }
+  </style>
+</head>
+<body>
+  <div id="graph"></div>
+  <div id="controls">
+    <h3>Phase 2 Graph Test</h3>
+    <input id="search" type="text" placeholder="Search nodes...">
+    <p>Test: Click nodes to highlight connections, double-click to simulate opening URLs.</p>
+  </div>
+  <div id="stats">
+    <div class="stat-item"><span class="stat-label">Nodes:</span> <span class="stat-value" id="stat-nodes">0</span></div>
+    <div class="stat-item"><span class="stat-label">Edges:</span> <span class="stat-value" id="stat-edges">0</span></div>
+  </div>
+  <div id="test-log"></div>
+
+  <script>
+    // Test data: Generate sample bookmarks
+    const sampleBookmarks = [
+      {
+        id: '1',
+        title: 'Async/Await in JavaScript',
+        url: 'https://developer.mozilla.org/async-await',
+        reason: 'Learning async programming',
+        summary: 'Complete guide to async functions and await',
+        tags: ['javascript', 'async', 'programming'],
+        type: 'source'
+      },
+      {
+        id: '2',
+        title: 'Promise Patterns',
+        url: 'https://example.com/promises',
+        reason: 'Reference for common patterns',
+        summary: 'Common Promise usage patterns and best practices',
+        tags: ['javascript', 'async', 'patterns'],
+        type: 'concept'
+      },
+      {
+        id: '3',
+        title: 'Error Handling Guide',
+        url: 'https://example.com/error-handling',
+        reason: 'Best practices for error handling',
+        summary: 'How to properly handle errors in async code',
+        tags: ['javascript', 'error-handling', 'async'],
+        type: 'source'
+      },
+      {
+        id: '4',
+        title: 'JavaScript Fundamentals',
+        url: 'https://example.com/js-basics',
+        reason: 'Core reference',
+        summary: 'Essential JavaScript concepts',
+        tags: ['javascript', 'fundamentals'],
+        type: 'entity'
+      },
+      {
+        id: '5',
+        title: 'Performance Optimization',
+        url: 'https://example.com/perf-guide',
+        reason: 'Optimize async operations',
+        summary: 'Tips for optimizing async code performance',
+        tags: ['performance', 'optimization', 'async'],
+        type: 'synthesis'
+      },
+      {
+        id: '6',
+        title: 'React Hooks',
+        url: 'https://react.dev/hooks',
+        reason: 'React state management',
+        summary: 'Modern React with hooks',
+        tags: ['react', 'hooks', 'frontend'],
+        type: 'source'
+      }
+    ];
+
+    // Build edges from shared tags
+    function buildEdges(bookmarks) {
+      const edges = [];
+      const seen = new Set();
+
+      // Build tag map
+      const tagMap = {};
+      bookmarks.forEach(b => {
+        if (b.tags && Array.isArray(b.tags)) {
+          b.tags.forEach(tag => {
+            if (!tagMap[tag]) tagMap[tag] = [];
+            tagMap[tag].push(b.id);
+          });
+        }
+      });
+
+      // Create edges between bookmarks sharing tags
+      Object.values(tagMap).forEach(ids => {
+        for (let i = 0; i < ids.length; i++) {
+          for (let j = i + 1; j < ids.length; j++) {
+            const key = `${ids[i]}-${ids[j]}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              edges.push({
+                from: ids[i],
+                to: ids[j],
+                type: 'tag',
+                confidence: 1.0
+              });
+            }
+          }
+        }
+      });
+
+      return edges;
+    }
+
+    // Community colors
+    const COMMUNITY_COLORS = [
+      "#E91E63", "#00BCD4", "#8BC34A", "#FF5722", "#673AB7",
+      "#FFC107", "#009688", "#F44336", "#3F51B5", "#CDDC39"
+    ];
+
+    // Compute node metrics
+    function computeNodeMetrics(bookmarks, edges) {
+      const degreeMap = {};
+      bookmarks.forEach(b => { degreeMap[b.id] = 0; });
+
+      edges.forEach(e => {
+        if (degreeMap[e.from] !== undefined) degreeMap[e.from]++;
+        if (degreeMap[e.to] !== undefined) degreeMap[e.to]++;
+      });
+
+      // Assign communities by primary tag
+      const communities = {};
+      const tagToComm = {};
+      let commId = 0;
+
+      bookmarks.forEach(b => {
+        if (b.tags && b.tags.length > 0) {
+          const primaryTag = b.tags[0];
+          if (!(primaryTag in tagToComm)) {
+            tagToComm[primaryTag] = commId++;
+          }
+          communities[b.id] = tagToComm[primaryTag];
+        } else {
+          communities[b.id] = commId++;
+        }
+      });
+
+      const nodes = bookmarks.map(b => ({
+        ...b,
+        value: degreeMap[b.id] + 1,
+        degree: degreeMap[b.id],
+        group: communities[b.id]
+      }));
+
+      return { nodes, communities };
+    }
+
+    // Transform to vis.js format
+    function transformToVis(nodes, edges) {
+      const visNodes = nodes.map(n => ({
+        id: n.id,
+        label: n.title,
+        title: n.title,
+        value: Math.max(1, n.degree + 1),
+        color: {
+          background: COMMUNITY_COLORS[n.group % COMMUNITY_COLORS.length],
+          border: COMMUNITY_COLORS[n.group % COMMUNITY_COLORS.length],
+          highlight: {
+            background: COMMUNITY_COLORS[n.group % COMMUNITY_COLORS.length],
+            border: "#fff"
+          }
+        },
+        group: n.group,
+        degree: n.degree,
+        tags: n.tags
+      }));
+
+      const visEdges = edges.map((e, idx) => ({
+        id: idx,
+        from: e.from,
+        to: e.to,
+        label: e.type,
+        color: '#555555',
+        width: 1
+      }));
+
+      return { visNodes, visEdges };
+    }
+
+    // Logging utility
+    function log(msg, type = 'info') {
+      const logDiv = document.getElementById('test-log');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry log-' + type;
+      entry.textContent = msg;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // Initialize test
+    window.addEventListener('load', () => {
+      try {
+        log('✓ Generating sample data...', 'success');
+        
+        const edges = buildEdges(sampleBookmarks);
+        const { nodes } = computeNodeMetrics(sampleBookmarks, edges);
+        const { visNodes, visEdges } = transformToVis(nodes, edges);
+
+        log(`✓ Generated ${nodes.length} nodes and ${edges.length} edges`, 'success');
+
+        // Create vis.js network
+        const container = document.getElementById('graph');
+        const nodeSet = new vis.DataSet(visNodes);
+        const edgeSet = new vis.DataSet(visEdges);
+
+        const options = {
+          physics: {
+            enabled: true,
+            barnesHut: {
+              gravitationalConstant: -5000,
+              centralGravity: 0.3,
+              springLength: 200,
+              springConstant: 0.04
+            },
+            maxVelocity: 50,
+            minVelocity: 0.75,
+            solver: 'barnesHut',
+            timestep: 0.5,
+            stabilization: { iterations: 250 }
+          },
+          interaction: {
+            hover: true,
+            navigationButtons: false,
+            keyboard: true,
+            zoomView: true,
+            dragView: true
+          },
+          nodes: {
+            shape: 'dot',
+            scaling: {
+              label: { enabled: true, min: 14, max: 30 }
+            },
+            font: { size: 16, color: '#fff' }
+          },
+          edges: {
+            smooth: {
+              enabled: true,
+              type: 'continuous',
+              roundness: 0.5
+            },
+            color: {
+              color: '#555555',
+              highlight: '#1a73e8',
+              opacity: 0.6
+            }
+          }
+        };
+
+        const network = new vis.Network(container, { nodes: nodeSet, edges: edgeSet }, options);
+        
+        log('✓ Network initialized', 'success');
+        document.getElementById('stat-nodes').textContent = visNodes.length;
+        document.getElementById('stat-edges').textContent = visEdges.length;
+
+        // Test interactions
+        network.on('click', params => {
+          if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const node = nodes.find(n => n.id === nodeId);
+            if (node) {
+              log(`✓ Selected: ${node.title} (degree: ${node.degree})`, 'success');
+            }
+          }
+        });
+
+        network.on('doubleClick', params => {
+          if (params.nodes.length > 0) {
+            const node = nodes.find(n => n.id === params.nodes[0]);
+            if (node) {
+              log(`✓ Simulated open: ${node.url}`, 'warning');
+            }
+          }
+        });
+
+        // Physics stabilization
+        network.once('stabilizationIterationsDone', () => {
+          log('✓ Physics stabilization complete', 'success');
+          network.setOptions({ physics: { enabled: false } });
+          network.fit();
+        });
+
+        log('✓ Test ready! Click nodes to test interactions', 'success');
+
+      } catch (err) {
+        log(`✗ Error: ${err.message}`, 'error');
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
