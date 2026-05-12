@@ -6,6 +6,67 @@ let searchQuery = '';
 let currentView = 'graph';
 let editingId = null;
 let panelId = null; // id bookmark đang hiển thị trong panel
+let currentNetwork = null; // vis.js network instance
+
+// ── vis.js Color Constants ──────────────────────────────────────────────────────
+const TYPE_COLORS = {
+  "source": "#4CAF50",
+  "entity": "#2196F3",
+  "concept": "#FF9800",
+  "synthesis": "#9C27B0",
+  "unknown": "#9E9E9E",
+};
+
+const EDGE_COLORS = {
+  "tag": "#555555",
+  "inferred": "#FF5722",
+  "ambiguous": "#BDBDBD",
+};
+
+// ── vis.js Data Transformation ─────────────────────────────────────────────────
+function inferNodeType(bookmark) {
+  // Simple heuristic: if has summary, likely important (synthesis)
+  if (bookmark.summary) return "synthesis";
+  return "entity";
+}
+
+function bookmarkToVisNode(bookmark, degree, group) {
+  const nodeType = inferNodeType(bookmark);
+  const color = COMMUNITY_COLORS[group % COMMUNITY_COLORS.length];
+  return {
+    id: bookmark.id,
+    label: bookmark.title,
+    title: bookmark.title,
+    value: Math.max(1, degree + 1), // +1 so degree 0 nodes still visible
+    color: {
+      background: color,
+      border: color,
+      highlight: {
+        background: color,
+        border: "#fff"
+      }
+    },
+    group: group,
+    degree: degree,
+    tags: bookmark.tags || [],
+    url: bookmark.url,
+    summary: bookmark.summary,
+    reason: bookmark.reason,
+    bookmark: bookmark
+  };
+}
+
+function enrichEdge(edge) {
+  return {
+    id: edge.from + "-" + edge.to,
+    from: edge.from,
+    to: edge.to,
+    label: edge.label,
+    title: edge.label,
+    color: EDGE_COLORS[edge.type] || EDGE_COLORS["tag"],
+    width: edge.type === "tag" ? 1 : 2
+  };
+}
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
@@ -661,124 +722,152 @@ function showExportModal() {
   });
 }
 
-// ── Graph view ─────────────────────────────────────────────────────────────────
+// ── Graph view (vis.js) ────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
-  const svg = d3.select('#graph-svg');
-  svg.selectAll('*').remove();
-
   if (bookmarks.length === 0) return;
 
-  const w = document.getElementById('graph-view').clientWidth;
-  const h = document.getElementById('graph-view').clientHeight;
+  const container = document.getElementById('graph-view');
+  if (!container) return;
 
   // Build edges and compute metrics
   const edges = buildEdgesFromTags(bookmarks);
   const { nodes: metricNodes } = computeNodeMetrics(bookmarks, edges);
-  
-  // Assign community colors
-  const nodes = assignCommunityColors(metricNodes);
-  
-  // Build link data from edges
-  const links = edges.map(e => ({
-    source: e.from,
-    target: e.to,
-    shared: [e.label]
-  }));
 
-  const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(80))
-    .force('charge', d3.forceManyBody().strength(-120))
-    .force('center', d3.forceCenter(w / 2, h / 2))
-    .force('collision', d3.forceCollide(32));
-
-  const g = svg.append('g');
-
-  svg.call(d3.zoom().scaleExtent([0.2, 3]).on('zoom', e => g.attr('transform', e.transform)));
-
-  const link = g.append('g').selectAll('line').data(links).join('line')
-    .attr('stroke', '#dadce0').attr('stroke-width', 1.5).attr('stroke-opacity', 0.6);
-
-  const node = g.append('g').selectAll('g').data(nodes).join('g')
-    .attr('cursor', 'pointer')
-    .call(d3.drag()
-      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-      .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
-
-  node.append('circle')
-    .attr('r', 18)
-    .attr('fill', d => d.color)
-    .attr('fill-opacity', d => d.summary ? 0.25 : 0.08)
-    .attr('stroke', d => d.color)
-    .attr('stroke-width', d => d.summary ? 2.5 : 1.5);
-
-  node.append('text')
-    .attr('text-anchor', 'middle').attr('dominant-baseline', 'central')
-    .attr('font-size', '14px').text('🔗');
-
-  node.append('text')
-    .attr('text-anchor', 'middle').attr('y', 28)
-    .attr('font-size', '10px').attr('fill', '#3c4043')
-    .text(d => d.title.length > 22 ? d.title.slice(0, 22) + '…' : d.title);
-
-  const tooltip = document.getElementById('graph-tooltip');
-
-  // Build adjacency set for quick lookup
+  // Build adjacency map for highlighting
   const neighborMap = {};
-  nodes.forEach(n => { neighborMap[n.id] = new Set(); });
-  links.forEach(l => {
-    neighborMap[l.source.id || l.source]?.add(l.target.id || l.target);
-    neighborMap[l.target.id || l.target]?.add(l.source.id || l.source);
+  metricNodes.forEach(n => { neighborMap[n.id] = new Set(); });
+  edges.forEach(e => {
+    neighborMap[e.from]?.add(e.to);
+    neighborMap[e.to]?.add(e.from);
   });
 
-  node
-    .on('mouseover', (e, d) => {
-      tooltip.style.display = 'block';
-      tooltip.innerHTML =
-        '<strong>' + escapeHtml(d.title) + '</strong>' +
-        '<div class="tt-url">' + escapeHtml(d.url) + '</div>' +
-        (d.summary ? '<div class="tt-summary">' + escapeHtml(d.summary) + '</div>' : '') +
-        (d.reason ? '<div class="tt-reason">"' + escapeHtml(d.reason) + '"</div>' : '') +
-        '<div class="tt-tags">' + d.tags.map(t => '<span class="tt-tag">' + escapeHtml(t) + '</span>').join('') + '</div>';
-    })
-    .on('mousemove', (e) => {
-      tooltip.style.left = (e.offsetX + 14) + 'px';
-      tooltip.style.top = (e.offsetY - 10) + 'px';
-    })
-    .on('mouseout', () => { tooltip.style.display = 'none'; })
-    .on('click', (e, d) => {
-      e.stopPropagation();
-      const neighbors = neighborMap[d.id] || new Set();
-      node.selectAll('circle')
-        .attr('fill-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? (n.summary ? 0.85 : 0.35) : 0.04)
-        .attr('stroke-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.15);
-      node.selectAll('text')
-        .attr('opacity', n => (n.id === d.id || neighbors.has(n.id)) ? 1 : 0.2);
-      link
-        .attr('stroke-opacity', l => (l.source.id === d.id || l.target.id === d.id) ? 1 : 0.05)
-        .attr('stroke', l => (l.source.id === d.id || l.target.id === d.id) ? '#1a73e8' : '#dadce0')
-        .attr('stroke-width', l => (l.source.id === d.id || l.target.id === d.id) ? 2.5 : 1.5);
-      openNodePanel(d.id);
-    })
-    .on('dblclick', (e, d) => { e.stopPropagation(); window.open(d.url, '_blank'); });
+  // Transform to vis.js format
+  const visNodes = new vis.DataSet(metricNodes.map(n => bookmarkToVisNode(n, n.degree, n.group)));
+  const visEdges = new vis.DataSet(edges.map(enrichEdge));
 
-  // Click background → reset highlight
-  svg.on('click', () => {
-    node.selectAll('circle')
-      .attr('fill-opacity', n => n.summary ? 0.25 : 0.08)
-      .attr('stroke-opacity', 1)
-      .attr('stroke', n => n.color)
-      .attr('stroke-width', n => n.summary ? 2.5 : 1.5);
-    node.selectAll('text').attr('opacity', 1);
-    link.attr('stroke-opacity', 0.6).attr('stroke', '#dadce0').attr('stroke-width', 1.5);
-    closeNodePanel();
+  // Determine physics based on node count
+  let gravConst = -2000;
+  let springLen = 150;
+  if (metricNodes.length > 80) {
+    gravConst = -8000;
+    springLen = 250;
+  } else if (metricNodes.length > 30) {
+    gravConst = -5000;
+    springLen = 200;
+  }
+
+  const options = {
+    physics: {
+      enabled: true,
+      barnesHut: {
+        gravitationalConstant: gravConst,
+        centralGravity: 0.3,
+        springLength: springLen,
+        springConstant: 0.04
+      },
+      maxVelocity: 50,
+      minVelocity: 0.75,
+      solver: 'barnesHut',
+      timestep: 0.5,
+      stabilization: {
+        iterations: 250
+      }
+    },
+    interaction: {
+      hover: true,
+      navigationButtons: false,
+      keyboard: true,
+      zoomView: true,
+      dragView: true
+    },
+    nodes: {
+      shape: 'dot',
+      scaling: {
+        label: { enabled: true, min: 14, max: 30 }
+      },
+      font: { size: 16, color: '#fff' }
+    },
+    edges: {
+      smooth: {
+        enabled: true,
+        type: 'continuous',
+        roundness: 0.5
+      },
+      color: {
+        color: '#555555',
+        highlight: '#1a73e8',
+        opacity: 0.6
+      }
+    }
+  };
+
+  // Create network
+  currentNetwork = new vis.Network(container, { nodes: visNodes, edges: visEdges }, options);
+
+  // Event: click node → highlight neighbors + open panel
+  currentNetwork.on('click', params => {
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const neighbors = neighborMap[nodeId] || new Set();
+
+      // Build update map for node opacity
+      const nodeUpdates = {};
+      metricNodes.forEach(n => {
+        nodeUpdates[n.id] = {
+          opacity: (n.id === nodeId || neighbors.has(n.id)) ? 1 : 0.2
+        };
+      });
+      visNodes.update(Object.entries(nodeUpdates).map(([id, data]) => ({ id, ...data })));
+
+      // Highlight connected edges
+      const edgeUpdates = {};
+      visEdges.forEach(e => {
+        const isConnected = e.from === nodeId || e.to === nodeId;
+        edgeUpdates[e.id] = {
+          color: isConnected ? '#1a73e8' : '#555555',
+          width: isConnected ? 2 : 1
+        };
+      });
+      visEdges.update(Object.entries(edgeUpdates).map(([id, data]) => ({ id, ...data })));
+
+      openNodePanel(nodeId);
+    } else {
+      // Background click → reset
+      resetGraphHighlight(visNodes, visEdges);
+      closeNodePanel();
+    }
   });
 
-  simulation.on('tick', () => {
-    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-    node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+  // Double-click node → open URL
+  currentNetwork.on('doubleClick', params => {
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const node = metricNodes.find(n => n.id === nodeId);
+      if (node && node.bookmark) {
+        window.open(node.bookmark.url, '_blank');
+      }
+    }
   });
+
+  // Auto-fit after physics stabilize
+  currentNetwork.once('stabilizationIterationsDone', () => {
+    currentNetwork.setOptions({ physics: { enabled: false } });
+    currentNetwork.fit();
+  });
+}
+
+function resetGraphHighlight(visNodes, visEdges) {
+  // Reset all nodes to full opacity
+  const nodeUpdates = visNodes.map(n => ({ id: n.id, opacity: 1 }));
+  visNodes.update(nodeUpdates);
+
+  // Reset all edges to default color/width
+  const edgeUpdates = visEdges.map(e => ({
+    id: e.id,
+    color: e.color,
+    width: 1
+  }));
+  visEdges.update(edgeUpdates);
 }
 
 // ── Edit modal ─────────────────────────────────────────────────────────────────
