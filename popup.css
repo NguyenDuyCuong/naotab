@@ -6,8 +6,8 @@ body {
   background: #f8f9fa;
   color: #202124;
   width: 500px;
-  min-height: 400px;
-  max-height: 620px;
+  min-height: 500px;
+  max-height: 720px;
   display: flex;
   flex-direction: column;
 }
