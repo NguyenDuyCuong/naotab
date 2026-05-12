@@ -340,6 +340,216 @@ function computeNodeMetrics(bookmarks, edges) {
   return { nodes, communities };
 }
 
+// ── Community Coloring ─────────────────────────────────────────────────────────
+const COMMUNITY_COLORS = [
+  "#E91E63", "#00BCD4", "#8BC34A", "#FF5722", "#673AB7",
+  "#FFC107", "#009688", "#F44336", "#3F51B5", "#CDDC39",
+];
+
+/**
+ * assignCommunityColors(nodes)
+ *
+ * Assigns vibrant colors to nodes based on their community (topic cluster).
+ * Bookmarks with the same primary tag get the same color.
+ *
+ * @param {Array} nodes - Array of node objects with group property (from computeNodeMetrics)
+ * @returns {Array} Array of nodes with added color property
+ */
+function assignCommunityColors(nodes) {
+  return nodes.map(n => ({
+    ...n,
+    color: COMMUNITY_COLORS[n.group % COMMUNITY_COLORS.length]
+  }));
+}
+
+/**
+ * generateStaticHTML(nodes, edges)
+ *
+ * Generates a self-contained HTML file with embedded vis.js graph visualization.
+ * The HTML includes all necessary styling and JavaScript for a fully functional graph.
+ *
+ * @param {Array} nodes - Array of node objects with id, title, value, degree, group properties
+ * @param {Array} edges - Array of edge objects with from, to, type, label, confidence properties
+ * @returns {string} Complete HTML string ready to save to file
+ */
+function generateStaticHTML(nodes, edges) {
+  const COMMUNITY_COLORS = [
+    "#E91E63", "#00BCD4", "#8BC34A", "#FF5722", "#673AB7",
+    "#FFC107", "#009688", "#F44336", "#3F51B5", "#CDDC39",
+  ];
+
+  // Prepare nodes: add color, size, label
+  const preparedNodes = nodes.map(n => ({
+    id: n.id,
+    label: n.title,
+    title: n.title, // vis.js uses title for tooltip
+    value: n.value || 1,
+    size: Math.sqrt(n.value || 1) * 15, // Size by degree
+    color: COMMUNITY_COLORS[n.group % COMMUNITY_COLORS.length],
+    group: n.group,
+    degree: n.degree,
+    tags: n.tags,
+  }));
+
+  // Prepare edges: add colors and styling
+  const preparedEdges = edges.map(e => ({
+    from: e.from,
+    to: e.to,
+    type: e.type,
+    label: e.label,
+    confidence: e.confidence,
+    color: e.type === 'tag' ? '#555555' : '#FF5722', // Grey for tags, orange for inferred
+    width: e.type === 'tag' ? 1 : 2,
+    title: `${e.label} (${e.confidence ? e.confidence.toFixed(2) : '1.00'})`,
+  }));
+
+  // Serialize to JSON
+  const nodesJson = JSON.stringify(preparedNodes, null, 2);
+  const edgesJson = JSON.stringify(preparedEdges, null, 2);
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>naoTab Graph Export</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+        }
+
+        #graph {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(10, 10, 30, 0.88);
+            padding: 14px;
+            border-radius: 10px;
+            z-index: 10;
+            max-width: 300px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 13px;
+        }
+
+        #controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
+            letter-spacing: 0.5px;
+        }
+
+        #controls p {
+            margin: 10px 0 0 0;
+            font-size: 11px;
+            color: #9ea3b0;
+            line-height: 1.5;
+        }
+
+        #stats {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(10, 10, 30, 0.88);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 12px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .stat-item {
+            margin: 4px 0;
+        }
+
+        .stat-label {
+            color: #9ea3b0;
+        }
+
+        .stat-value {
+            color: #FF5722;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="graph"></div>
+    <div id="controls">
+        <h3>naoTab Graph</h3>
+        <p>Click and drag to move nodes. Scroll to zoom. Physics simulation creates organic layout.</p>
+    </div>
+    <div id="stats">
+        <div class="stat-item"><span class="stat-label">Nodes:</span> <span class="stat-value" id="stat-nodes">0</span></div>
+        <div class="stat-item"><span class="stat-label">Edges:</span> <span class="stat-value" id="stat-edges">0</span></div>
+    </div>
+
+    <script>
+        const originalNodes = ${nodesJson};
+        const originalEdges = ${edgesJson};
+
+        const nodes = new vis.DataSet(originalNodes);
+        const edges = new vis.DataSet(originalEdges);
+
+        // Update stats
+        document.getElementById('stat-nodes').textContent = nodes.length;
+        document.getElementById('stat-edges').textContent = edges.length;
+
+        const options = {
+            physics: {
+                enabled: true,
+                barnesHut: {
+                    gravitationalConstant: -26000,
+                    centralGravity: 0.3,
+                    springLength: 200,
+                    springConstant: 0.04,
+                }
+            },
+            nodes: {
+                physics: true,
+                scaling: {
+                    label: true
+                },
+                widthConstraint: {
+                    maximum: 200
+                },
+                font: {
+                    size: 14,
+                    color: '#eee'
+                }
+            },
+            edges: {
+                smooth: {
+                    type: 'continuous'
+                },
+                font: {
+                    size: 12,
+                    color: '#9ea3b0'
+                }
+            }
+        };
+
+        const container = document.getElementById('graph');
+        new vis.Network(container, { nodes, edges }, options);
+    </script>
+</body>
+</html>`;
+
+  return html;
+}
+
 // ── Graph view ─────────────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   const svg = d3.select('#graph-svg');
@@ -350,17 +560,19 @@ function renderGraph(bookmarks) {
   const w = document.getElementById('graph-view').clientWidth;
   const h = document.getElementById('graph-view').clientHeight;
 
-  const nodes = bookmarks.map(b => ({ ...b, id: b.id }));
-  const links = [];
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      // Only use tags that are not excluded for building edges
-      const shared = nodes[i].tags.filter(t => nodes[j].tags.includes(t) && !excludedTags.has(t));
-      if (shared.length > 0) {
-        links.push({ source: nodes[i].id, target: nodes[j].id, shared });
-      }
-    }
-  }
+  // Build edges and compute metrics
+  const edges = buildEdgesFromTags(bookmarks);
+  const { nodes: metricNodes } = computeNodeMetrics(bookmarks, edges);
+  
+  // Assign community colors
+  const nodes = assignCommunityColors(metricNodes);
+  
+  // Build link data from edges
+  const links = edges.map(e => ({
+    source: e.from,
+    target: e.to,
+    shared: [e.label]
+  }));
 
   const simulation = d3.forceSimulation(nodes)
     .force('link', d3.forceLink(links).id(d => d.id).distance(80))
@@ -384,9 +596,9 @@ function renderGraph(bookmarks) {
 
   node.append('circle')
     .attr('r', 18)
-    .attr('fill', d => d.summary ? '#1a73e8' : '#9aa0a6')
+    .attr('fill', d => d.color)
     .attr('fill-opacity', d => d.summary ? 0.25 : 0.08)
-    .attr('stroke', d => d.summary ? '#1a73e8' : '#bdc1c6')
+    .attr('stroke', d => d.color)
     .attr('stroke-width', d => d.summary ? 2.5 : 1.5);
 
   node.append('text')
@@ -425,7 +637,6 @@ function renderGraph(bookmarks) {
     .on('mouseout', () => { tooltip.style.display = 'none'; })
     .on('click', (e, d) => {
       e.stopPropagation();
-      // Highlight: dim nodes/links không liên quan, highlight những cái liên quan
       const neighbors = neighborMap[d.id] || new Set();
       node.selectAll('circle')
         .attr('fill-opacity', n => (n.id === d.id || neighbors.has(n.id)) ? (n.summary ? 0.85 : 0.35) : 0.04)
@@ -440,12 +651,12 @@ function renderGraph(bookmarks) {
     })
     .on('dblclick', (e, d) => { e.stopPropagation(); window.open(d.url, '_blank'); });
 
-  // Click nền SVG → reset highlight
+  // Click background → reset highlight
   svg.on('click', () => {
     node.selectAll('circle')
       .attr('fill-opacity', n => n.summary ? 0.25 : 0.08)
       .attr('stroke-opacity', 1)
-      .attr('stroke', n => n.summary ? '#1a73e8' : '#bdc1c6')
+      .attr('stroke', n => n.color)
       .attr('stroke-width', n => n.summary ? 2.5 : 1.5);
     node.selectAll('text').attr('opacity', 1);
     link.attr('stroke-opacity', 0.6).attr('stroke', '#dadce0').attr('stroke-width', 1.5);
