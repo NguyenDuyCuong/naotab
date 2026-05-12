@@ -2,6 +2,102 @@
 // Depends on: storage.js (getSettings), extraction.js (helper functions)
 
 /**
+ * suggestNodeMetadata(node, nodeType, pageMeta = null)
+ * Unified AI suggestion engine for all node types: bookmark, concept, entity, keyword
+ * 
+ * @param {Object} node - Node object (bookmark/concept/entity/keyword)
+ * @param {string} nodeType - Type of node ('bookmark'|'concept'|'entity'|'keyword')
+ * @param {Object} pageMeta - Page metadata (optional, for bookmarks)
+ * @returns {Promise<Object>} Metadata suggestions: {tags, summary} for bookmark, {definition} for concept, {profile, related_entities} for entity
+ */
+async function suggestNodeMetadata(node, nodeType, pageMeta = null) {
+  const settings = await getSettings();
+  if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
+    throw new Error('AI not configured');
+  }
+
+  const isAnthropic = settings.aiBaseUrl.includes('anthropic.com');
+  const isOpenRouter = settings.aiBaseUrl.includes('openrouter.ai');
+
+  let prompt, endpoint, body, headers;
+
+  if (nodeType === 'bookmark') {
+    // Use existing callAI logic
+    return callAI(node.title, node.url, pageMeta?._aiText || '');
+  } else if (nodeType === 'concept') {
+    // Generate definition for concept
+    prompt = `You are helping organize a developer's knowledge base.
+
+Given this concept: "${node.title}"
+Context: Found in bookmarks about ${node.related_contexts || 'various topics'}.
+
+Generate a brief definition (1-2 sentences) for this concept.
+Return JSON with field "definition" only.
+
+Example: {"definition": "A design pattern for..."}
+
+Respond with ONLY valid JSON, no explanation.`;
+  } else if (nodeType === 'entity') {
+    // Generate profile for entity
+    prompt = `You are helping organize a developer's knowledge base.
+
+Given this entity: "${node.title}" (type: ${node.entity_type || 'unknown'})
+Context: Mentioned in bookmarks about ${node.related_contexts || 'various topics'}.
+
+Generate a brief profile (1-2 sentences) for this entity and suggest up to 3 related entities.
+Return JSON with fields "profile" and "related_entities".
+
+Example: {"profile": "A company that...", "related_entities": ["Entity1", "Entity2"]}
+
+Respond with ONLY valid JSON, no explanation.`;
+  } else if (nodeType === 'keyword') {
+    // Generate context for keyword
+    prompt = `You are helping organize a developer's knowledge base.
+
+Given this keyword: "${node.title}"
+Context: Found in bookmarks about ${node.related_contexts || 'various topics'}.
+
+Generate a brief explanation (1 sentence) of what this keyword means in context.
+Return JSON with field "explanation" only.
+
+Example: {"explanation": "A technique for..."}
+
+Respond with ONLY valid JSON, no explanation.`;
+  } else {
+    throw new Error('Unknown node type: ' + nodeType);
+  }
+
+  headers = { 'Content-Type': 'application/json' };
+
+  if (isAnthropic) {
+    headers['x-api-key'] = settings.aiApiKey;
+    headers['anthropic-version'] = '2023-06-01';
+    endpoint = `${settings.aiBaseUrl}/messages`;
+    body = { model: settings.aiModel, max_tokens: 256, messages: [{ role: 'user', content: prompt }] };
+  } else {
+    headers['Authorization'] = `Bearer ${settings.aiApiKey}`;
+    if (isOpenRouter) {
+      headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
+      headers['X-Title'] = 'naoTab';
+    }
+    endpoint = `${settings.aiBaseUrl}/chat/completions`;
+    body = { model: settings.aiModel, max_tokens: 256, messages: [{ role: 'user', content: prompt }] };
+  }
+
+  const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+
+  const data = await res.json();
+  const text = isAnthropic
+    ? data.content?.[0]?.text
+    : data.choices?.[0]?.message?.content;
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Invalid AI response');
+  return JSON.parse(jsonMatch[0]);
+}
+
+/**
  * callAI(title, url, pageContent)
  * Calls configured AI provider, returns { tags, summary } or null.
  * Supports OpenAI-compatible APIs and Anthropic native API.

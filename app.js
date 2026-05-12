@@ -693,6 +693,115 @@ function showExportModal() {
   });
 }
 
+// ── Deduplication functions ────────────────────────────────────────────────────
+/**
+ * deduplicateEntities(allNodes)
+ * Merge entity nodes by normalized name. Consolidates all parent bookmarks
+ * into a single entity node.
+ *
+ * @param {Array} allNodes - All nodes from graph rendering
+ * @returns {Array} Deduplicated entity nodes
+ */
+function deduplicateEntities(allNodes) {
+  const entityMap = {}; // normalized_name → {node, parents}
+  const entityNodes = allNodes.filter(n => n.type === 'entity');
+  
+  entityNodes.forEach(node => {
+    const normalized = normalizeEntityName(node.title, node.entity_type);
+    if (!entityMap[normalized]) {
+      entityMap[normalized] = {
+        node: {
+          ...node,
+          title: normalized,
+          merged_from: [],
+          id: 'entity_dedup_' + normalized.replace(/\s+/g, '_').toLowerCase()
+        },
+        parents: new Set()
+      };
+    }
+    if (node.parent) {
+      entityMap[normalized].parents.add(node.parent);
+      entityMap[normalized].node.merged_from.push(node.id);
+    }
+  });
+  
+  return Object.values(entityMap).map(e => ({
+    ...e.node,
+    parents: Array.from(e.parents)
+  }));
+}
+
+/**
+ * deduplicateKeywords(allNodes)
+ * Merge keyword nodes by normalized name. Consolidates all parent bookmarks
+ * into a single keyword node.
+ *
+ * @param {Array} allNodes - All nodes from graph rendering
+ * @returns {Array} Deduplicated keyword nodes
+ */
+function deduplicateKeywords(allNodes) {
+  const keywordMap = {}; // normalized_word → {node, parents}
+  const keywordNodes = allNodes.filter(n => n.type === 'keyword');
+  
+  keywordNodes.forEach(node => {
+    const normalized = normalizeKeywordName(node.title);
+    if (!keywordMap[normalized]) {
+      keywordMap[normalized] = {
+        node: {
+          ...node,
+          title: normalized,
+          merged_from: [],
+          id: 'keyword_dedup_' + normalized
+        },
+        parents: new Set()
+      };
+    }
+    if (node.parent) {
+      keywordMap[normalized].parents.add(node.parent);
+      keywordMap[normalized].node.merged_from.push(node.id);
+    }
+  });
+  
+  return Object.values(keywordMap).map(k => ({
+    ...k.node,
+    parents: Array.from(k.parents)
+  }));
+}
+
+/**
+ * updateEdgesForDedupNodes(edges, oldNodes, newNodes)
+ * Update edges to point to deduplicated nodes instead of original nodes.
+ *
+ * @param {Array} edges - Original edges
+ * @param {Array} oldNodes - Original nodes before dedup
+ * @param {Array} newNodes - Deduplicated nodes
+ * @returns {Array} Updated edges
+ */
+function updateEdgesForDedupNodes(edges, oldNodes, newNodes) {
+  // Create mapping from old node ID to new node ID for dedup nodes
+  const oldToNewMap = {};
+  
+  newNodes.forEach(newNode => {
+    if (newNode.merged_from && Array.isArray(newNode.merged_from)) {
+      newNode.merged_from.forEach(oldId => {
+        oldToNewMap[oldId] = newNode.id;
+      });
+    }
+  });
+  
+  // Update edges to use new node IDs
+  return edges.map(e => {
+    const newSource = oldToNewMap[e.source] || e.source;
+    const newTarget = oldToNewMap[e.target] || e.target;
+    
+    return {
+      ...e,
+      source: newSource,
+      target: newTarget
+    };
+  });
+}
+
 // ── Graph view (D3.js) ─────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   if (bookmarks.length === 0) return;
@@ -798,9 +907,20 @@ function renderGraph(bookmarks) {
     }
   });
 
-  // Prepare D3 data format
+  // NEW in v6: Deduplicate entities and keywords
+  const nonDedupNodes = allNodes.filter(n => n.type === 'bookmark' || n.type === 'concept');
+  const entityNodes = deduplicateEntities(allNodes);
+  const keywordNodes = deduplicateKeywords(allNodes);
+  
+  // Combine dedup entities and keywords with other nodes
+  const dedupAllNodes = [...nonDedupNodes, ...entityNodes, ...keywordNodes];
+  
+  // Update edges to point to deduplicated nodes
+  const dedupAllEdges = updateEdgesForDedupNodes(allEdges, allNodes, dedupAllNodes);
+
+  // Prepare D3 data format (using deduplicated nodes)
   const data = {
-    nodes: allNodes.map(n => ({
+    nodes: dedupAllNodes.map(n => ({
       id: n.id,
       type: n.type || 'bookmark',
       group: n.group,
@@ -814,7 +934,7 @@ function renderGraph(bookmarks) {
       relevance: n.relevance || 1,
       ...n
     })),
-    links: allEdges.map(e => ({
+    links: dedupAllEdges.map(e => ({
       source: e.source || e.from,
       target: e.target || e.to,
       value: e.confidence || 1.0,
@@ -824,7 +944,7 @@ function renderGraph(bookmarks) {
   };
 
   // Create D3 chart with multi-layer support
-  const chart = createD3Chart(data, allNodes);
+  const chart = createD3Chart(data, dedupAllNodes);
 
   // Render
   container.innerHTML = '';
@@ -1196,8 +1316,62 @@ if (btnExtractAll) {
       const b = toExtract[i];
       try {
         const extracted = await extractBookmarkMetadata(b.title, b.url, b.summary, b.pageMeta);
+        
+        // NEW in v6: Also suggest definitions for extracted concepts and entities
+        let suggestFailures = 0;
+        
+        if (extracted.concepts && Array.isArray(extracted.concepts)) {
+          for (const concept of extracted.concepts) {
+            try {
+              const def = await suggestNodeMetadata(concept, 'concept');
+              if (def && def.definition) {
+                concept.ai_definition = def.definition;
+              }
+            } catch (e) {
+              suggestFailures++;
+            }
+          }
+        }
+        
+        if (extracted.entities && Array.isArray(extracted.entities)) {
+          for (const entity of extracted.entities) {
+            try {
+              const profile = await suggestNodeMetadata(entity, 'entity');
+              if (profile && profile.profile) {
+                entity.ai_profile = profile.profile;
+              }
+            } catch (e) {
+              suggestFailures++;
+            }
+          }
+        }
+        
         await updateBookmark(b.id, {
           concepts: extracted.concepts,
+          entities: extracted.entities,
+          keywords: extracted.keywords,
+          key_statistics: extracted.key_statistics,
+          purpose: extracted.purpose,
+          thesis: extracted.thesis,
+          key_message: extracted.key_message,
+          ai_extracted_fields: extracted.ai_extracted_fields,
+          extraction_confidence: extracted.extraction_confidence,
+          extraction_timestamp: extracted.extraction_timestamp
+        });
+        
+        btnExtractAll.textContent = '⏳ ' + (i + 1) + '/' + toExtract.length;
+      } catch (e) {
+        console.warn('Extraction failed for bookmark ' + b.id + ':', e.message);
+      }
+    }
+    
+    allBookmarks = await getBookmarks();
+    renderAll();
+    btnExtractAll.disabled = false;
+    btnExtractAll.textContent = '✨ AI Extract All';
+    showToast('✅ Extraction complete for ' + toExtract.length + ' bookmarks!');
+  });
+}
           entities: extracted.entities,
           keywords: extracted.keywords,
           key_statistics: extracted.key_statistics,
@@ -1736,9 +1910,7 @@ document.getElementById('panel-close').addEventListener('click', closeNodePanel)
 // AI Suggest in panel
 document.getElementById('panel-btn-ai').addEventListener('click', async () => {
   if (!panelId) return;
-  const b = allBookmarks.find(x => x.id === panelId);
-  if (!b) return;
-
+  
   const btn = document.getElementById('panel-btn-ai');
   const status = document.getElementById('panel-ai-status');
   btn.disabled = true;
@@ -1746,34 +1918,79 @@ document.getElementById('panel-btn-ai').addEventListener('click', async () => {
   status.className = 'panel-ai-status';
 
   try {
-    // Rebuild AI text from saved pageMeta if available
-    const meta = b.pageMeta || {};
-    const parts = [];
-    if (meta.ogTitle && meta.ogTitle !== b.title) parts.push('Title: ' + meta.ogTitle);
-    if (meta.description) parts.push('Description: ' + meta.description);
-    if (meta.keywords) parts.push('Keywords: ' + meta.keywords);
-    if (meta.ogType) parts.push('Type: ' + meta.ogType);
-    if (meta.author) parts.push('Author: ' + meta.author);
-    if (meta.siteName) parts.push('Site: ' + meta.siteName);
-    const aiText = parts.join('\n');
+    // Determine node type from visible panel sections
+    const bookmarkSection = document.getElementById('panel-bookmark-section');
+    const conceptSection = document.getElementById('panel-concept-section');
+    const entitySection = document.getElementById('panel-entity-section');
+    
+    const isBookmark = !bookmarkSection.classList.contains('hidden');
+    const isConcept = !conceptSection.classList.contains('hidden');
+    const isEntity = !entitySection.classList.contains('hidden');
+    
+    if (isBookmark) {
+      // Existing bookmark logic
+      const b = allBookmarks.find(x => x.id === panelId);
+      if (!b) throw new Error('Bookmark not found');
+      
+      // Rebuild AI text from saved pageMeta if available
+      const meta = b.pageMeta || {};
+      const parts = [];
+      if (meta.ogTitle && meta.ogTitle !== b.title) parts.push('Title: ' + meta.ogTitle);
+      if (meta.description) parts.push('Description: ' + meta.description);
+      if (meta.keywords) parts.push('Keywords: ' + meta.keywords);
+      if (meta.ogType) parts.push('Type: ' + meta.ogType);
+      if (meta.author) parts.push('Author: ' + meta.author);
+      if (meta.siteName) parts.push('Site: ' + meta.siteName);
+      const aiText = parts.join('\n');
 
-    const result = await callAI(b.title, b.url, aiText);
-    if (result) {
-      const settings = await getSettings();
-      if (settings.featTags && result.tags?.length) {
-        const existing = document.getElementById('panel-tags').value
-          .split(',').map(t => t.trim()).filter(Boolean);
-        const merged = [...new Set([...result.tags, ...existing])].slice(0, 8);
-        document.getElementById('panel-tags').value = merged.join(', ');
+      const result = await suggestNodeMetadata(b, 'bookmark', { _aiText: aiText });
+      if (result) {
+        const settings = await getSettings();
+        if (settings.featTags && result.tags?.length) {
+          const existing = document.getElementById('panel-tags').value
+            .split(',').map(t => t.trim()).filter(Boolean);
+          const merged = [...new Set([...result.tags, ...existing])].slice(0, 8);
+          document.getElementById('panel-tags').value = merged.join(', ');
+        }
+        if (settings.featSummary && result.summary) {
+          document.getElementById('panel-summary').value = result.summary;
+        }
+        status.textContent = '✅ Done!';
       }
-      if (settings.featSummary && result.summary) {
-        document.getElementById('panel-summary').value = result.summary;
+    } else if (isConcept) {
+      // Parse concept ID to get concept object
+      const parts = panelId.split('_');
+      const bookmarkId = parts[1];
+      const index = parseInt(parts[2]);
+      const b = allBookmarks.find(x => x.id === bookmarkId);
+      if (!b || !b.concepts || !b.concepts[index]) throw new Error('Concept not found');
+      
+      const concept = b.concepts[index];
+      const result = await suggestNodeMetadata(concept, 'concept');
+      if (result) {
+        document.getElementById('panel-concept-ai-def').value = result.definition || '';
+        status.textContent = '✅ Definition generated!';
       }
-      status.textContent = '✅ Done!';
+    } else if (isEntity) {
+      // Parse entity ID to get entity object
+      const parts = panelId.split('_');
+      const bookmarkId = parts[1];
+      const index = parseInt(parts[2]);
+      const b = allBookmarks.find(x => x.id === bookmarkId);
+      if (!b || !b.entities || !b.entities[index]) throw new Error('Entity not found');
+      
+      const entity = b.entities[index];
+      const result = await suggestNodeMetadata(entity, 'entity');
+      if (result) {
+        document.getElementById('panel-entity-ai-profile').value = result.profile || '';
+        status.textContent = '✅ Profile generated!';
+      }
     }
   } catch (e) {
     status.textContent = '❌ ' + e.message;
     status.className = 'panel-ai-status error';
+  } finally {
+    btn.disabled = false;
   }
 });
 
