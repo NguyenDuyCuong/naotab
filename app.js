@@ -275,6 +275,71 @@ function buildEdgesFromTags(bookmarks) {
   return edges;
 }
 
+/**
+ * computeNodeMetrics(bookmarks, edges)
+ *
+ * Calculates node properties for graph visualization:
+ * - Degree: number of edges connected to each node (centrality)
+ * - Communities: groups related bookmarks based on primary tag
+ * - Value: degree + 1 (for node sizing in D3/vis.js)
+ *
+ * @param {Array} bookmarks - Array of bookmark objects with id, tags properties
+ * @param {Array} edges - Array of edge objects from buildEdgesFromTags()
+ * @returns {Object} { nodes: [...enhanced nodes], communities: {nodeId: communityId} }
+ *
+ * Algorithm:
+ *  1. Initialize degree map with all bookmarks (0 initial degree)
+ *  2. For each edge, increment degree of both nodes
+ *  3. Detect communities using simplified tag-based clustering (primary tag per bookmark)
+ *  4. Enhance each bookmark with: value (degree+1), degree, group (community)
+ *  5. Return enhanced nodes and community map
+ */
+function computeNodeMetrics(bookmarks, edges) {
+  // 1. Initialize degree map for all bookmarks
+  const degreeMap = {};
+  bookmarks.forEach(b => {
+    degreeMap[b.id] = 0;
+  });
+
+  // 2. Count degree for each node
+  edges.forEach(e => {
+    if (degreeMap[e.from] !== undefined) {
+      degreeMap[e.from]++;
+    }
+    if (degreeMap[e.to] !== undefined) {
+      degreeMap[e.to]++;
+    }
+  });
+
+  // 3. Detect communities using tag-based clustering
+  const communities = {};
+  const tagToComm = {}; // Map from primary tag to community ID
+  let commId = 0;
+
+  bookmarks.forEach(b => {
+    if (b.tags && b.tags.length > 0) {
+      const primaryTag = b.tags[0];
+      if (!(primaryTag in tagToComm)) {
+        tagToComm[primaryTag] = commId++;
+      }
+      communities[b.id] = tagToComm[primaryTag];
+    } else {
+      // Bookmarks with no tags get their own community
+      communities[b.id] = commId++;
+    }
+  });
+
+  // 4. Enhance nodes with computed properties
+  const nodes = bookmarks.map(b => ({
+    ...b,
+    value: degreeMap[b.id] + 1, // +1 so isolated nodes (degree 0) have value 1 (still visible)
+    degree: degreeMap[b.id],
+    group: communities[b.id]
+  }));
+
+  return { nodes, communities };
+}
+
 // ── Graph view ─────────────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   const svg = d3.select('#graph-svg');
