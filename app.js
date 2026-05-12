@@ -6,6 +6,8 @@ let searchQuery = '';
 let currentView = 'graph';
 let editingId = null;
 let panelId = null; // id bookmark đang hiển thị trong panel
+let panelNodeType = 'bookmark';
+let panelDirty = false;
 let currentNetwork = null; // D3 graph instance (simulation, svg, links, nodes)
 
 // NEW in v5: Multi-layer graph support
@@ -1537,6 +1539,11 @@ function getContentTypeEmoji(type) {
   return emojis[type] || '📄';
 }
 
+function findBookmarkById(id) {
+  const key = String(id);
+  return allBookmarks.find(x => String(x.id) === key);
+}
+
 // ── Node detail panel ──────────────────────────────────────────────────────────
 /**
  * openNodePanel(nodeId, nodeType = 'bookmark')
@@ -1547,8 +1554,13 @@ function getContentTypeEmoji(type) {
  * For entities: shows type, AI + manual profiles, linked bookmarks, related concepts
  */
 function openNodePanel(nodeId, nodeType = 'bookmark') {
-  panelId = nodeId;
-  
+  const targetId = String(nodeId);
+  const isSwitchingNode = panelId !== null && (String(panelId) !== targetId || panelNodeType !== nodeType);
+  if (isSwitchingNode && panelDirty) {
+    const ok = confirm('You have unsaved changes in the detail panel. Switch node and discard changes?');
+    if (!ok) return;
+  }
+
   // Show/hide sections based on node type
   const bookmarkSection = document.getElementById('panel-bookmark-section');
   const conceptSection = document.getElementById('panel-concept-section');
@@ -1560,24 +1572,93 @@ function openNodePanel(nodeId, nodeType = 'bookmark') {
   
   const openBtn = document.getElementById('panel-open-url');
   const deleteBtn = document.getElementById('panel-delete');
-  
-  if (nodeType === 'bookmark') {
-    bookmarkSection.classList.remove('hidden');
-    openBtn.style.display = 'block';
-    deleteBtn.style.display = 'block';
-    openBookmarkPanel(nodeId);
-  } else if (nodeType === 'concept') {
+  const saveBtn = document.getElementById('panel-save');
+  const conceptManualEl = document.getElementById('panel-concept-manual-def');
+
+  const tryOpen = (type, id) => {
+    if (type === 'bookmark') {
+      bookmarkSection.classList.remove('hidden');
+      openBtn.style.display = 'block';
+      deleteBtn.style.display = 'block';
+      saveBtn.style.display = 'block';
+      conceptManualEl.readOnly = false;
+      return openBookmarkPanel(id);
+    }
+    if (type === 'concept') {
+      conceptSection.classList.remove('hidden');
+      openBtn.style.display = 'none';
+      deleteBtn.style.display = 'none';
+      saveBtn.style.display = 'block';
+      conceptManualEl.readOnly = false;
+      return openConceptPanel(id);
+    }
+    if (type === 'entity') {
+      entitySection.classList.remove('hidden');
+      openBtn.style.display = 'none';
+      deleteBtn.style.display = 'none';
+      saveBtn.style.display = 'block';
+      conceptManualEl.readOnly = false;
+      return openEntityPanel(id);
+    }
+    if (type === 'keyword') {
+      conceptSection.classList.remove('hidden');
+      openBtn.style.display = 'none';
+      deleteBtn.style.display = 'none';
+      saveBtn.style.display = 'none';
+      conceptManualEl.readOnly = true;
+      return openKeywordPanel(id);
+    }
+    return false;
+  };
+
+  let resolvedType = nodeType;
+  let opened = tryOpen(resolvedType, targetId);
+
+  // Fallback when caller type and ID format are inconsistent
+  if (!opened && targetId.startsWith('concept_')) {
+    bookmarkSection.classList.add('hidden');
     conceptSection.classList.remove('hidden');
+    entitySection.classList.add('hidden');
     openBtn.style.display = 'none';
     deleteBtn.style.display = 'none';
-    openConceptPanel(nodeId);
-  } else if (nodeType === 'entity') {
+    resolvedType = 'concept';
+    opened = openConceptPanel(targetId);
+  } else if (!opened && targetId.startsWith('entity_')) {
+    bookmarkSection.classList.add('hidden');
+    conceptSection.classList.add('hidden');
     entitySection.classList.remove('hidden');
     openBtn.style.display = 'none';
     deleteBtn.style.display = 'none';
-    openEntityPanel(nodeId);
+    resolvedType = 'entity';
+    opened = openEntityPanel(targetId);
+  } else if (!opened && targetId.startsWith('keyword_')) {
+    bookmarkSection.classList.add('hidden');
+    conceptSection.classList.remove('hidden');
+    entitySection.classList.add('hidden');
+    openBtn.style.display = 'none';
+    deleteBtn.style.display = 'none';
+    saveBtn.style.display = 'none';
+    conceptManualEl.readOnly = true;
+    resolvedType = 'keyword';
+    opened = openKeywordPanel(targetId);
+  } else if (!opened && /^\d+$/.test(targetId)) {
+    bookmarkSection.classList.remove('hidden');
+    conceptSection.classList.add('hidden');
+    entitySection.classList.add('hidden');
+    openBtn.style.display = 'block';
+    deleteBtn.style.display = 'block';
+    resolvedType = 'bookmark';
+    opened = openBookmarkPanel(targetId);
   }
-  
+
+  if (!opened) {
+    showToast('⚠️ Could not load node details');
+    return;
+  }
+
+  panelId = targetId;
+  panelNodeType = resolvedType;
+  panelDirty = false;
   document.getElementById('node-panel').classList.add('open');
   updateSidebarNodeList();
 }
@@ -1587,8 +1668,8 @@ function openNodePanel(nodeId, nodeType = 'bookmark') {
  * Render bookmark details in the panel.
  */
 function openBookmarkPanel(bookmarkId) {
-  const b = allBookmarks.find(x => x.id === bookmarkId);
-  if (!b) return;
+  const b = findBookmarkById(bookmarkId);
+  if (!b) return false;
 
   const faviconEl = document.getElementById('panel-favicon');
   if (b.favIconUrl && b.favIconUrl.startsWith('http')) {
@@ -1790,6 +1871,7 @@ function openBookmarkPanel(bookmarkId) {
   } else if (extractedEl) {
     extractedEl.innerHTML = '';
   }
+  return true;
 }
 
 /**
@@ -1802,8 +1884,8 @@ function openConceptPanel(conceptId) {
   const bookmarkId = parts[1];
   const index = parseInt(parts[2]);
   
-  const b = allBookmarks.find(x => x.id === bookmarkId);
-  if (!b || !b.concepts || !b.concepts[index]) return;
+  const b = findBookmarkById(bookmarkId);
+  if (!b || !b.concepts || !b.concepts[index]) return false;
   
   const concept = b.concepts[index];
   
@@ -1853,6 +1935,7 @@ function openConceptPanel(conceptId) {
   } else {
     connectedEl.innerHTML = '';
   }
+  return true;
 }
 
 /**
@@ -1860,13 +1943,132 @@ function openConceptPanel(conceptId) {
  * Render entity details (entity_bookmarkId_index format).
  */
 function openEntityPanel(entityId) {
+  if (entityId.startsWith('entity_dedup_')) {
+    const dedupKey = entityId.replace('entity_dedup_', '').toLowerCase();
+    const displayFromNode = currentNetwork?.nodes?.find(n => String(n.id) === String(entityId) && n.type === 'entity');
+    const normalized = (displayFromNode?.title || entityId.replace('entity_dedup_', '').replace(/_/g, ' ')).trim();
+    const matches = [];
+    allBookmarks.forEach(b => {
+      (b.entities || []).forEach((entity, idx) => {
+        const entityKey = normalizeEntityName(entity.name, entity.type).replace(/\s+/g, '_').toLowerCase();
+        if (entityKey === dedupKey) {
+          matches.push({ bookmark: b, entity, idx });
+        }
+      });
+    });
+    if (matches.length === 0) return false;
+
+    const uniqueTypes = [...new Set(matches.map(m => m.entity.type).filter(Boolean))];
+    const firstAi = matches.map(m => m.entity.ai_profile).find(Boolean) || '';
+    const firstManual = matches.map(m => m.entity.manual_definition).find(Boolean) || '';
+
+    document.getElementById('panel-favicon').textContent = '🟠';
+    document.getElementById('panel-title').textContent = normalized;
+    document.getElementById('panel-url').textContent = `Appears in ${matches.length} bookmark(s)`;
+    document.getElementById('panel-badges').innerHTML =
+      '<div class="panel-badges">' +
+      '<span class="badge badge-content-type">🟠 Entity</span>' +
+      '<span class="badge badge-content-type">Merged</span>' +
+      '</div>';
+    document.getElementById('panel-entity-type').value = uniqueTypes.join(', ');
+    document.getElementById('panel-entity-ai-profile').value = firstAi;
+    document.getElementById('panel-entity-manual-profile').value = firstManual;
+
+    const metaEl = document.getElementById('panel-entity-meta');
+    metaEl.innerHTML = '<div class="panel-meta-label">Metadata</div>' +
+      '<div class="panel-meta-row"><span class="panel-meta-key">Node ID</span><span class="panel-meta-val">' + escapeHtml(entityId) + '</span></div>' +
+      '<div class="panel-meta-row"><span class="panel-meta-key">Merged entries</span><span class="panel-meta-val">' + matches.length + '</span></div>';
+
+    const connectedEl = document.getElementById('panel-entity-connected');
+    connectedEl.innerHTML =
+      '<div class="panel-connected-label">🔗 Source Bookmarks (' + matches.length + ')</div>' +
+      matches.slice(0, 10).map(m => (
+        '<div class="connected-node-item" data-id="' + m.bookmark.id + '">' +
+          '<span class="connected-node-favicon">🌐</span>' +
+          '<span class="connected-node-title">' + escapeHtml(m.bookmark.title) + '</span>' +
+        '</div>'
+      )).join('');
+    connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
+      el.addEventListener('click', () => openNodePanel(el.dataset.id, 'bookmark'));
+    });
+    return true;
+  }
+
+  function openKeywordPanel(keywordId) {
+    const aiEl = document.getElementById('panel-concept-ai-def');
+    const manualEl = document.getElementById('panel-concept-manual-def');
+    const metaEl = document.getElementById('panel-concept-meta');
+    const connectedEl = document.getElementById('panel-concept-connected');
+
+    let keyword = '';
+    let matches = [];
+    let avgRelevance = 0;
+
+    if (keywordId.startsWith('keyword_dedup_')) {
+      const key = keywordId.replace('keyword_dedup_', '').toLowerCase().trim();
+      keyword = key;
+      allBookmarks.forEach(b => {
+        (b.keywords || []).forEach((kw, idx) => {
+          if (normalizeKeywordName(kw.word) === key) {
+            matches.push({ bookmark: b, keyword: kw, idx });
+          }
+        });
+      });
+    } else {
+      const parts = keywordId.split('_');
+      const bookmarkId = parts[1];
+      const index = parseInt(parts[2]);
+      const b = findBookmarkById(bookmarkId);
+      if (!b || !Array.isArray(b.keywords) || !b.keywords[index]) return false;
+      const kw = b.keywords[index];
+      keyword = normalizeKeywordName(kw.word);
+      matches.push({ bookmark: b, keyword: kw, idx: index });
+    }
+
+    if (matches.length === 0) return false;
+
+    avgRelevance = matches.reduce((s, m) => s + (m.keyword.relevance || 0), 0) / matches.length;
+    const maxFrequency = matches.reduce((m, x) => Math.max(m, x.keyword.frequency || 0), 0);
+
+    document.getElementById('panel-favicon').textContent = '🟡';
+    document.getElementById('panel-title').textContent = keyword;
+    document.getElementById('panel-url').textContent = `Appears in ${matches.length} bookmark(s)`;
+    document.getElementById('panel-badges').innerHTML =
+      '<div class="panel-badges">' +
+      '<span class="badge badge-content-type">🟡 Keyword</span>' +
+      '<span class="badge badge-content-type">Relevance: ' + Math.round(avgRelevance * 100) + '%</span>' +
+      '</div>';
+
+    aiEl.value = `Top frequency: ${Math.round(maxFrequency * 100)}%\nAverage relevance: ${Math.round(avgRelevance * 100)}%`;
+    manualEl.value = 'Keyword nodes are read-only in this view.';
+    manualEl.readOnly = true;
+
+    metaEl.innerHTML = '<div class="panel-meta-label">Metadata</div>' +
+      '<div class="panel-meta-row"><span class="panel-meta-key">Node ID</span><span class="panel-meta-val">' + escapeHtml(keywordId) + '</span></div>' +
+      '<div class="panel-meta-row"><span class="panel-meta-key">Sources</span><span class="panel-meta-val">' + matches.length + ' bookmark(s)</span></div>';
+
+    connectedEl.innerHTML =
+      '<div class="panel-connected-label">🔗 Source Bookmarks (' + matches.length + ')</div>' +
+      matches.slice(0, 10).map(m => (
+        '<div class="connected-node-item" data-id="' + m.bookmark.id + '">' +
+          '<span class="connected-node-favicon">🌐</span>' +
+          '<span class="connected-node-title">' + escapeHtml(m.bookmark.title) + '</span>' +
+        '</div>'
+      )).join('');
+    connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
+      el.addEventListener('click', () => openNodePanel(el.dataset.id, 'bookmark'));
+    });
+
+    return true;
+  }
+
   // Parse entity ID: entity_bookmarkId_index
   const parts = entityId.split('_');
   const bookmarkId = parts[1];
   const index = parseInt(parts[2]);
   
-  const b = allBookmarks.find(x => x.id === bookmarkId);
-  if (!b || !b.entities || !b.entities[index]) return;
+  const b = findBookmarkById(bookmarkId);
+  if (!b || !b.entities || !b.entities[index]) return false;
   
   const entity = b.entities[index];
   
@@ -1919,15 +2121,34 @@ function openEntityPanel(entityId) {
   } else {
     connectedEl.innerHTML = '';
   }
+  return true;
 }
 
 function closeNodePanel() {
   document.getElementById('node-panel').classList.remove('open');
   panelId = null;
+  panelNodeType = 'bookmark';
+  panelDirty = false;
   updateSidebarNodeList();
 }
 
 document.getElementById('panel-close').addEventListener('click', closeNodePanel);
+
+// Track unsaved edits in detail panel inputs
+[
+  'panel-summary',
+  'panel-reason',
+  'panel-tags',
+  'panel-concept-manual-def',
+  'panel-entity-manual-profile'
+].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('input', () => {
+      if (panelId) panelDirty = true;
+    });
+  }
+});
 
 // AI Suggest in panel
 document.getElementById('panel-btn-ai').addEventListener('click', async () => {
@@ -2030,12 +2251,71 @@ document.getElementById('panel-open-url').addEventListener('click', () => {
 
 document.getElementById('panel-save').addEventListener('click', async () => {
   if (!panelId) return;
-  const summary = document.getElementById('panel-summary').value.trim();
-  const reason = document.getElementById('panel-reason').value.trim();
-  const tags = document.getElementById('panel-tags').value.split(',').map(t => t.trim()).filter(Boolean);
-  await updateBookmark(panelId, { summary, reason, tags });
+  const bookmarkSection = document.getElementById('panel-bookmark-section');
+  const conceptSection = document.getElementById('panel-concept-section');
+  const entitySection = document.getElementById('panel-entity-section');
+
+  if (!bookmarkSection.classList.contains('hidden')) {
+    const summary = document.getElementById('panel-summary').value.trim();
+    const reason = document.getElementById('panel-reason').value.trim();
+    const tags = document.getElementById('panel-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+    await updateBookmark(panelId, { summary, reason, tags });
+  } else if (!conceptSection.classList.contains('hidden')) {
+    const parts = String(panelId).split('_');
+    const bookmarkId = parts[1];
+    const index = parseInt(parts[2]);
+    const b = findBookmarkById(bookmarkId);
+    if (!b || !b.concepts || !b.concepts[index]) {
+      showToast('❌ Concept not found');
+      return;
+    }
+    const manualDefinition = document.getElementById('panel-concept-manual-def').value.trim();
+    const concepts = [...b.concepts];
+    concepts[index] = { ...concepts[index], manual_definition: manualDefinition || null };
+    await updateBookmark(b.id, { concepts });
+  } else if (!entitySection.classList.contains('hidden')) {
+    const manualProfile = document.getElementById('panel-entity-manual-profile').value.trim();
+    const idText = String(panelId);
+    if (idText.startsWith('entity_dedup_')) {
+      const dedupKey = idText.replace('entity_dedup_', '').toLowerCase();
+      const updates = allBookmarks
+        .map(b => {
+          if (!Array.isArray(b.entities) || b.entities.length === 0) return null;
+          let changed = false;
+          const entities = b.entities.map(e => {
+            const entityKey = normalizeEntityName(e.name, e.type).replace(/\s+/g, '_').toLowerCase();
+            if (entityKey === dedupKey) {
+              changed = true;
+              return { ...e, manual_definition: manualProfile || null };
+            }
+            return e;
+          });
+          return changed ? { id: b.id, entities } : null;
+        })
+        .filter(Boolean);
+      for (const u of updates) {
+        await updateBookmark(u.id, { entities: u.entities });
+      }
+    } else {
+      const parts = idText.split('_');
+      const bookmarkId = parts[1];
+      const index = parseInt(parts[2]);
+      const b = findBookmarkById(bookmarkId);
+      if (!b || !b.entities || !b.entities[index]) {
+        showToast('❌ Entity not found');
+        return;
+      }
+      const entities = [...b.entities];
+      entities[index] = { ...entities[index], manual_definition: manualProfile || null };
+      await updateBookmark(b.id, { entities });
+    }
+  }
+
   allBookmarks = await getBookmarks();
   renderAll();
+  // Re-open the same node so the panel reflects latest saved values
+  openNodePanel(panelId, panelNodeType);
+  panelDirty = false;
   showToast('✅ Updated!');
 });
 
