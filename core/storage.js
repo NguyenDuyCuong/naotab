@@ -12,7 +12,7 @@
 
 const STORAGE_KEY  = 'tab_bookmarks';
 const SETTINGS_KEY = 'tab_explorer_settings';
-const LEGACY_SETTINGS_KEYS = ['tab_settings', 'settings', 'naotab_settings'];
+const LEGACY_SETTINGS_KEYS = ['tab_settings', 'settings', 'bookmark-vault_settings'];
 
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
@@ -87,4 +87,29 @@ async function updateBookmark(id, changes) {
 async function deleteBookmark(id) {
   const bookmarks = await getBookmarks();
   await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks.filter(b => b.id !== id) });
+}
+
+/**
+ * replaceAllBookmarks(bookmarks)
+ * Replaces full bookmark collection after running migration.
+ */
+async function replaceAllBookmarks(bookmarks) {
+  const safe = (Array.isArray(bookmarks) ? bookmarks : []).map(migrateBookmark);
+  await chrome.storage.local.set({ [STORAGE_KEY]: safe });
+  return safe.length;
+}
+
+/**
+ * mergeBookmarks(bookmarks)
+ * Merges incoming bookmarks by URL into local storage.
+ * Returns { imported, skipped, total }.
+ */
+async function mergeBookmarks(bookmarks) {
+  const incoming = (Array.isArray(bookmarks) ? bookmarks : []).map(migrateBookmark);
+  const existing = await getBookmarks();
+  const existingUrls = new Set(existing.map(b => b.url));
+  const newOnes = incoming.filter(b => !existingUrls.has(b.url));
+  const merged = [...newOnes, ...existing];
+  await chrome.storage.local.set({ [STORAGE_KEY]: merged });
+  return { imported: newOnes.length, skipped: incoming.length - newOnes.length, total: merged.length };
 }

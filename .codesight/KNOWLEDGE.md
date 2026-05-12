@@ -1,4 +1,4 @@
-# Knowledge Map — C:\Users\cuong\workspace\naotab
+# Knowledge Map — C:\Users\cuong\workspace\bookmark-vault
 > 3 notes · 0 decisions · 0 open questions
 
 > **AI Primer:** This knowledge base has 3 notes.

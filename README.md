@@ -1,4 +1,4 @@
-# 🗂️ naoTab — Your Personal Tab Knowledge Base
+# 🗂️ bookmark-vault — Your Personal Tab Knowledge Base
 
 > 🇻🇳 [Xem phiên bản tiếng Việt](./README.vi.md)
 
@@ -6,7 +6,7 @@ A Chrome Extension (Manifest V3) that turns your browser tabs into an organized,
 
 ---
 
-![naoTab Overview](./assets/screenshot-overview.png)
+![bookmark-vault Overview](./assets/screenshot-overview.png)
 
 ---
 
@@ -24,6 +24,7 @@ A Chrome Extension (Manifest V3) that turns your browser tabs into an organized,
 - **Save whole window** — bulk-save all tabs in a window, each with its own meta tags captured
 - **Obsidian export** — ZIP of `.md` files with YAML frontmatter, ready to open as an Obsidian vault
 - **JSON export / import** — full backup and restore
+- **Google Drive backup (manual)** — backup to Drive `appDataFolder`, restore latest backup with safe merge or full replace
 - **Connected nodes** — node panel shows all bookmarks linked to the selected node (within current filter), click to navigate between them
 - **Sidebar node list** — left sidebar split into Tags (top) + live node list (bottom), updates with filter/search in real time
 - **Hover tooltips** — hover any node or sidebar item to preview title + summary instantly
@@ -71,6 +72,12 @@ If AI is configured, the **✨ AI Suggest** button appears in the panel. It uses
 
 ### Settings
 Click **⚙️** → choose a provider preset → enter API key and model → **🧪 Test connection** → **💾 Save Settings**.
+
+### Google Drive backup setup
+1. Open `manifest.json`
+2. Set `oauth2.client_id` to your Chrome Extension OAuth client ID
+3. Reload extension at `chrome://extensions/`
+4. Open Settings → enable Drive backup → Connect Google → Backup now
 
 ---
 
@@ -124,6 +131,7 @@ AI is **off by default**. Offline keyword + domain-based tag suggestions always 
 | `storage` | Save bookmarks and settings locally |
 | `unlimitedStorage` | Remove the default 10MB cap |
 | `scripting` + `host_permissions` | Read page meta tags on demand |
+| `identity` + `oauth2` | Authorize Google account for Drive `appDataFolder` backup |
 
 ---
 
@@ -132,7 +140,7 @@ AI is **off by default**. Offline keyword + domain-based tag suggestions always 
 After editing any file, open the popup and click **🔄** to reload the extension.
 
 ```
-naoTab/
+bookmark-vault/
 ├── manifest.json              # Manifest V3
 ├── popup.html / popup.css / popup.js   # Extension popup
 ├── app.html / app.js          # Full-page Knowledge Base
@@ -147,7 +155,7 @@ naoTab/
 
 ## 🗺️ Roadmap
 
-- [ ] Google Drive sync
+- [x] Google Drive backup/sync (manual first version)
 - [ ] Dark mode
 - [ ] Duplicate tab detector
 - [ ] AI-powered bookmark grouping

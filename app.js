@@ -441,7 +441,7 @@ function generateStaticHTML(nodes, edges) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>naoTab Graph Export</title>
+    <title>bookmark-vault Graph Export</title>
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
         * {
@@ -517,7 +517,7 @@ function generateStaticHTML(nodes, edges) {
 <body>
     <div id="graph"></div>
     <div id="controls">
-        <h3>naoTab Graph</h3>
+        <h3>bookmark-vault Graph</h3>
         <p>Click and drag to move nodes. Scroll to zoom. Physics simulation creates organic layout.</p>
     </div>
     <div id="stats">
@@ -586,7 +586,7 @@ function generateStaticHTML(nodes, edges) {
  * Trigger browser download of HTML file
  *
  * @param {string} htmlContent - Complete HTML string to download
- * @param {string} filename - Output filename (e.g. 'naotab-graph.html')
+ * @param {string} filename - Output filename (e.g. 'bookmark-vault-graph.html')
  * @returns {void}
  */
 function downloadFile(htmlContent, filename) {
@@ -631,7 +631,7 @@ function showExportModal() {
           </label>
           <label>
             Filename
-            <input type="text" id="export-filename" placeholder="naotab-graph.html" value="naotab-graph-${today}.html">
+            <input type="text" id="export-filename" placeholder="bookmark-vault-graph.html" value="bookmark-vault-graph-${today}.html">
           </label>
         </div>
         <div class="export-info">
@@ -673,7 +673,7 @@ function showExportModal() {
       const nodes = assignCommunityColors(metricNodes);
 
       const html = generateStaticHTML(nodes, edges);
-      downloadFile(html, filename.value || 'naotab-graph.html');
+      downloadFile(html, filename.value || 'bookmark-vault-graph.html');
 
       modal.remove();
       showToast('✅ Graph exported successfully!');
@@ -1566,7 +1566,7 @@ document.getElementById('btn-export').addEventListener('click', async () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'naotab-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.download = 'bookmark-vault-' + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
   URL.revokeObjectURL(url);
   showToast('✅ JSON exported!');
@@ -1587,7 +1587,7 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
     }
 
     const zip = new JSZip();
-    const vault = zip.folder('naoTab-vault');
+    const vault = zip.folder('bookmark-vault-vault');
 
     files.forEach(({ filename, content }) => {
       vault.file(filename, content);
@@ -1595,15 +1595,15 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
 
     // Add README with Obsidian import guide
     vault.file('_README.md', [
-      '# naoTab Vault',
+      '# bookmark-vault Vault',
       '',
-      'This vault was exported from [naoTab](https://github.com/bsquang/naotab).',
+      'This vault was exported from [bookmark-vault](https://github.com/bsquang/bookmark-vault).',
       '',
       '## How to import into Obsidian',
       '',
       '1. Unzip this ZIP file',
       '2. Open Obsidian → **Open folder as vault**',
-      '3. Select the `naoTab-vault` folder you just unzipped',
+      '3. Select the `bookmark-vault-vault` folder you just unzipped',
       '4. Install the **Dataview** plugin to query bookmarks by tag, status, etc.',
       '',
       '## Example Dataview query',
@@ -1624,7 +1624,7 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'naoTab-obsidian-' + new Date().toISOString().slice(0, 10) + '.zip';
+    a.download = 'bookmark-vault-obsidian-' + new Date().toISOString().slice(0, 10) + '.zip';
     a.click();
     URL.revokeObjectURL(url);
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Settings — naoTab</title>
+  <title>Settings — bookmark-vault</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -174,6 +174,39 @@
     .test-ok { color: #34a853; font-weight: 500; }
     .test-err { color: #d93025; }
 
+    .status-box {
+      background: #f8f9fa;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #3c4043;
+      line-height: 1.5;
+    }
+    .status-box strong { color: #202124; }
+    .status-note {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 4px;
+    }
+    .action-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-secondary {
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      background: white;
+      color: #3c4043;
+      cursor: pointer;
+    }
+    .btn-secondary:hover { background: #f1f3f4; }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
     /* Save button */
     .save-row {
       display: flex;
@@ -336,6 +369,49 @@
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-title">
+      <div>
+        <h2>☁️ Google Drive Backup</h2>
+        <p>Backup bookmarks + settings to your Drive appDataFolder</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Enable Drive backup</div>
+          <div class="toggle-desc">Local data remains primary. Drive is backup only.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="drive-enabled" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="status-box">
+        <div><strong>Status:</strong> <span id="drive-status">Checking...</span></div>
+        <div><strong>Last backup:</strong> <span id="drive-last-backup">Never</span></div>
+        <div><strong>Last restore:</strong> <span id="drive-last-restore">Never</span></div>
+        <div id="drive-last-result-row"><strong>Last result:</strong> <span id="drive-last-result">—</span></div>
+        <div class="status-note" id="drive-status-note"></div>
+      </div>
+
+      <div class="field">
+        <label>Restore strategy</label>
+        <select id="drive-restore-strategy">
+          <option value="merge" selected>Safe merge (default, keep local + add missing by URL)</option>
+          <option value="replace">Replace local with backup (destructive)</option>
+        </select>
+      </div>
+
+      <div class="action-row">
+        <button class="btn-secondary" id="btn-drive-authorize">🔐 Connect Google</button>
+        <button class="btn-secondary" id="btn-drive-backup">☁️ Backup now</button>
+        <button class="btn-secondary" id="btn-drive-restore">♻️ Restore latest</button>
+      </div>
+    </div>
+  </div>
+
   <div class="save-row">
     <button class="btn-save" id="btn-save">💾 Save Settings</button>
   </div>
@@ -346,6 +422,7 @@
 
 <script src="core/schema.js"></script>
 <script src="core/storage.js"></script>
+<script src="core/sync/drive.js"></script>
 <script src="settings.js"></script>
 </body>
 </html>

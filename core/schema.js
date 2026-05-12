@@ -69,6 +69,12 @@ const SETTINGS_DEFAULTS = {
   aiModel:    '',
   featTags:   true,
   featSummary: true,
+  driveBackupEnabled: false,
+  driveBackupLastAt: '',
+  driveBackupLastResult: '',
+  driveBackupLastError: '',
+  driveBackupLastFileId: '',
+  driveBackupLastRestoreAt: '',
 };
 
 /**
@@ -499,4 +505,3 @@ function normalizeKeywordName(word) {
   if (!word) return '';
   return word.toLowerCase().trim();
 }
-

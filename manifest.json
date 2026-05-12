@@ -1,23 +1,30 @@
 {
   "manifest_version": 3,
-  "name": "naoTab",
-  "version": "0.19.1",
+  "name": "bookmark-vault",
+  "version": "0.21.1",
   "description": "Turn your browser tabs into a personal knowledge base — with context, tags, AI summaries, and a visual network graph.",
   "permissions": [
     "tabs",
     "storage",
     "unlimitedStorage",
-    "scripting"
+    "scripting",
+    "identity"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'"
+    "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'self'"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "naoTab"
+    "default_title": "bookmark-vault"
+  },
+  "oauth2": {
+    "client_id": "988883083098-ce31r6v8tdh8r2fp760vv2vla0mg4pal.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.appdata"
+    ]
   },
   "icons": {
     "16": "icons/icon16.png",
