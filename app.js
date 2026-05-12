@@ -373,11 +373,6 @@ function assignCommunityColors(nodes) {
  * @returns {string} Complete HTML string ready to save to file
  */
 function generateStaticHTML(nodes, edges) {
-  const COMMUNITY_COLORS = [
-    "#E91E63", "#00BCD4", "#8BC34A", "#FF5722", "#673AB7",
-    "#FFC107", "#009688", "#F44336", "#3F51B5", "#CDDC39",
-  ];
-
   // Prepare nodes: add color, size, label
   const preparedNodes = nodes.map(n => ({
     id: n.id,
