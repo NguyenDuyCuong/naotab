@@ -6,67 +6,12 @@ let searchQuery = '';
 let currentView = 'graph';
 let editingId = null;
 let panelId = null; // id bookmark đang hiển thị trong panel
-let currentNetwork = null; // vis.js network instance
+let currentNetwork = null; // D3 graph instance (simulation, svg, links, nodes)
 
-// ── vis.js Color Constants ──────────────────────────────────────────────────────
-const TYPE_COLORS = {
-  "source": "#4CAF50",
-  "entity": "#2196F3",
-  "concept": "#FF9800",
-  "synthesis": "#9C27B0",
-  "unknown": "#9E9E9E",
-};
-
-const EDGE_COLORS = {
-  "tag": "#555555",
-  "inferred": "#FF5722",
-  "ambiguous": "#BDBDBD",
-};
+// ── vis.js Color Constants [Removed - No longer needed with D3.js migration] ──
 
 // ── vis.js Data Transformation ─────────────────────────────────────────────────
-function inferNodeType(bookmark) {
-  // Simple heuristic: if has summary, likely important (synthesis)
-  if (bookmark.summary) return "synthesis";
-  return "entity";
-}
-
-function bookmarkToVisNode(bookmark, degree, group) {
-  const nodeType = inferNodeType(bookmark);
-  const color = COMMUNITY_COLORS[group % COMMUNITY_COLORS.length];
-  return {
-    id: bookmark.id,
-    label: bookmark.title,
-    title: bookmark.title,
-    value: Math.max(1, degree + 1), // +1 so degree 0 nodes still visible
-    color: {
-      background: color,
-      border: color,
-      highlight: {
-        background: color,
-        border: "#fff"
-      }
-    },
-    group: group,
-    degree: degree,
-    tags: bookmark.tags || [],
-    url: bookmark.url,
-    summary: bookmark.summary,
-    reason: bookmark.reason,
-    bookmark: bookmark
-  };
-}
-
-function enrichEdge(edge) {
-  return {
-    id: edge.from + "-" + edge.to,
-    from: edge.from,
-    to: edge.to,
-    label: edge.label,
-    title: edge.label,
-    color: EDGE_COLORS[edge.type] || EDGE_COLORS["tag"],
-    width: edge.type === "tag" ? 1 : 2
-  };
-}
+// [Removed: These functions are no longer needed with D3.js migration]
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
@@ -734,7 +679,7 @@ function showExportModal() {
   });
 }
 
-// ── Graph view (vis.js) ────────────────────────────────────────────────────────
+// ── Graph view (D3.js) ─────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   if (bookmarks.length === 0) return;
 
@@ -745,141 +690,164 @@ function renderGraph(bookmarks) {
   const edges = buildEdgesFromTags(bookmarks);
   const { nodes: metricNodes } = computeNodeMetrics(bookmarks, edges);
 
-  // Build adjacency map for highlighting
-  const neighborMap = {};
-  metricNodes.forEach(n => { neighborMap[n.id] = new Set(); });
-  edges.forEach(e => {
-    neighborMap[e.from]?.add(e.to);
-    neighborMap[e.to]?.add(e.from);
-  });
-
-  // Transform to vis.js format
-  const visNodes = new vis.DataSet(metricNodes.map(n => bookmarkToVisNode(n, n.degree, n.group)));
-  const visEdges = new vis.DataSet(edges.map(enrichEdge));
-
-  // Determine physics based on node count
-  let gravConst = -2000;
-  let springLen = 150;
-  if (metricNodes.length > 80) {
-    gravConst = -8000;
-    springLen = 250;
-  } else if (metricNodes.length > 30) {
-    gravConst = -5000;
-    springLen = 200;
-  }
-
-  const options = {
-    physics: {
-      enabled: true,
-      barnesHut: {
-        gravitationalConstant: gravConst,
-        centralGravity: 0.3,
-        springLength: springLen,
-        springConstant: 0.04
-      },
-      maxVelocity: 50,
-      minVelocity: 0.75,
-      solver: 'barnesHut',
-      timestep: 0.5,
-      stabilization: {
-        iterations: 250
-      }
-    },
-    interaction: {
-      hover: true,
-      navigationButtons: false,
-      keyboard: true,
-      zoomView: true,
-      dragView: true
-    },
-    nodes: {
-      shape: 'dot',
-      scaling: {
-        label: { enabled: true, min: 14, max: 30 }
-      },
-      font: { size: 16, color: '#fff' }
-    },
-    edges: {
-      smooth: {
-        enabled: true,
-        type: 'continuous',
-        roundness: 0.5
-      },
-      color: {
-        color: '#555555',
-        highlight: '#1a73e8',
-        opacity: 0.6
-      }
-    }
+  // Prepare D3 data format
+  const data = {
+    nodes: metricNodes.map(n => ({
+      id: n.id,
+      group: n.group,
+      value: n.degree,
+      degree: n.degree,
+      tags: n.tags || [],
+      title: n.title || n.id,
+      summary: n.summary || '',
+      url: n.url || '',
+      reading_time: n.reading_time || 5,
+      ...n
+    })),
+    links: edges.map(e => ({
+      source: e.from,
+      target: e.to,
+      value: e.confidence || 1.0,
+      label: e.label,
+      type: e.type
+    }))
   };
 
-  // Create network
-  currentNetwork = new vis.Network(container, { nodes: visNodes, edges: visEdges }, options);
+  // Create D3 chart
+  const chart = createD3Chart(data, bookmarks);
 
-  // Event: click node → highlight neighbors + open panel
-  currentNetwork.on('click', params => {
-    if (params.nodes.length > 0) {
-      const nodeId = params.nodes[0];
-      const neighbors = neighborMap[nodeId] || new Set();
-
-      // Build update map for node opacity
-      const nodeUpdates = {};
-      metricNodes.forEach(n => {
-        nodeUpdates[n.id] = {
-          opacity: (n.id === nodeId || neighbors.has(n.id)) ? 1 : 0.2
-        };
-      });
-      visNodes.update(Object.entries(nodeUpdates).map(([id, data]) => ({ id, ...data })));
-
-      // Highlight connected edges
-      const edgeUpdates = {};
-      visEdges.forEach(e => {
-        const isConnected = e.from === nodeId || e.to === nodeId;
-        edgeUpdates[e.id] = {
-          color: isConnected ? '#1a73e8' : '#555555',
-          width: isConnected ? 2 : 1
-        };
-      });
-      visEdges.update(Object.entries(edgeUpdates).map(([id, data]) => ({ id, ...data })));
-
-      openNodePanel(nodeId);
-    } else {
-      // Background click → reset
-      resetGraphHighlight(visNodes, visEdges);
-      closeNodePanel();
-    }
-  });
-
-  // Double-click node → open URL
-  currentNetwork.on('doubleClick', params => {
-    if (params.nodes.length > 0) {
-      const nodeId = params.nodes[0];
-      const node = metricNodes.find(n => n.id === nodeId);
-      if (node && node.bookmark) {
-        window.open(node.bookmark.url, '_blank');
-      }
-    }
-  });
-
-  // Auto-fit after physics stabilize
-  currentNetwork.once('stabilizationIterationsDone', () => {
-    currentNetwork.setOptions({ physics: { enabled: false } });
-    currentNetwork.fit();
-  });
+  // Render
+  container.innerHTML = '';
+  container.appendChild(chart);
 }
 
-function resetGraphHighlight(visNodes, visEdges) {
-  // Reset all nodes to full opacity
-  const nodeUpdates = visNodes.map(n => ({ id: n.id, opacity: 1 }));
-  visNodes.update(nodeUpdates);
+function createD3Chart(data, bookmarks) {
+  const container = document.getElementById('graph-view');
+  const width = container.clientWidth || 928;
+  const height = container.clientHeight || 680;
 
-  // Reset all edges to default color/width
-  const edgeUpdates = visEdges.map(e => ({
-    id: e.id,
-    color: e.color,
-    width: 1
-  }));
-  visEdges.update(edgeUpdates);
+  const links = data.links.map(d => ({...d}));
+  const nodes = data.nodes.map(d => ({...d}));
+
+  // D3 force simulation
+  const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(50))
+    .force("charge", d3.forceManyBody().strength(-300))
+    .force("x", d3.forceX(0).strength(0.05))
+    .force("y", d3.forceY(0).strength(0.05));
+
+  const svg = d3.create("svg")
+    .attr("width", width)
+    .attr("height", height)
+    .attr("viewBox", [-width / 2, -height / 2, width, height])
+    .attr("style", "max-width: 100%; height: auto; background: #f8f9fa;");
+
+  // Links
+  const link = svg.append("g")
+    .attr("stroke", "#999")
+    .attr("stroke-opacity", 0.6)
+    .selectAll("line")
+    .data(links)
+    .join("line")
+    .attr("stroke-width", d => Math.sqrt(d.value || 1));
+
+  // Nodes
+  const node = svg.append("g")
+    .attr("stroke", "#fff")
+    .attr("stroke-width", 1.5)
+    .selectAll("circle")
+    .data(nodes)
+    .join("circle")
+    .attr("r", d => 3 + (d.reading_time || 5) / 2)
+    .attr("fill", d => COMMUNITY_COLORS[d.group % COMMUNITY_COLORS.length])
+    .style("cursor", "pointer");
+
+  // Node tooltips
+  node.append("title")
+    .text(d => bookmarks.find(b => b.id === d.id)?.title || d.id);
+
+  // Drag behavior
+  function dragstarted(event) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    event.subject.fx = event.subject.x;
+    event.subject.fy = event.subject.y;
+  }
+
+  function dragged(event) {
+    event.subject.fx = event.x;
+    event.subject.fy = event.y;
+  }
+
+  function dragended(event) {
+    if (!event.active) simulation.alphaTarget(0);
+    event.subject.fx = null;
+    event.subject.fy = null;
+  }
+
+  node.call(d3.drag()
+    .on("start", dragstarted)
+    .on("drag", dragged)
+    .on("end", dragended));
+
+  // Node click: highlight neighbors + open panel
+  node.on("click", (event, d) => {
+    event.stopPropagation();
+    highlightNodeAndNeighbors(svg, d.id, links);
+    openNodePanel(d.id);
+  });
+
+  // Background click: reset highlight + close panel
+  svg.on("click", () => {
+    resetGraphHighlight(svg);
+    closeNodePanel();
+  });
+
+  // Double-click node: open URL
+  node.on("dblclick", (event, d) => {
+    if (d.url) window.open(d.url, '_blank');
+  });
+
+  // Simulation tick
+  simulation.on("tick", () => {
+    link
+      .attr("x1", d => d.source.x)
+      .attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x)
+      .attr("y2", d => d.target.y);
+
+    node
+      .attr("cx", d => d.x)
+      .attr("cy", d => d.y);
+  });
+
+  currentNetwork = { simulation, svg, links, nodes, data };
+  return svg.node();
+}
+
+function highlightNodeAndNeighbors(svg, nodeId, links) {
+  const neighbors = new Set();
+  links.forEach(link => {
+    if (link.source.id === nodeId) neighbors.add(link.target.id);
+    if (link.target.id === nodeId) neighbors.add(link.source.id);
+  });
+
+  svg.selectAll("circle")
+    .attr("opacity", d => (d.id === nodeId || neighbors.has(d.id)) ? 1 : 0.3);
+
+  svg.selectAll("line")
+    .attr("stroke", d =>
+      (d.source.id === nodeId || d.target.id === nodeId) ? '#1a73e8' : '#999'
+    )
+    .attr("stroke-width", d =>
+      (d.source.id === nodeId || d.target.id === nodeId) ? 2 : Math.sqrt(d.value || 1)
+    );
+}
+
+function resetGraphHighlight(svg) {
+  svg.selectAll("circle").attr("opacity", 1);
+  svg.selectAll("line")
+    .attr("stroke", "#999")
+    .attr("stroke-width", d => Math.sqrt(d.value || 1));
 }
 
 // ── Edit modal ─────────────────────────────────────────────────────────────────
