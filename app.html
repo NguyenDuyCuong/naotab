@@ -38,8 +38,10 @@
       flex-shrink: 0;
     }
     .topbar h1 { font-size: 16px; font-weight: 600; flex: 1; }
-    .topbar-actions { display: flex; gap: 8px; }
-    .topbar button {
+    .topbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .topbar-actions > button,
+    .topbar .toolbar-dropdown-main,
+    .topbar .toolbar-dropdown-toggle {
       padding: 5px 12px;
       border-radius: 5px;
       font-size: 12px;
@@ -51,13 +53,74 @@
       transition: background 0.15s;
       white-space: nowrap;
     }
-    .topbar button:hover { background: rgba(255,255,255,0.3); }
+    .topbar-actions > button:hover,
+    .topbar .toolbar-dropdown-main:hover,
+    .topbar .toolbar-dropdown-toggle:hover { background: rgba(255,255,255,0.3); }
+    .topbar button:disabled,
+    .topbar .toolbar-dropdown-main:disabled,
+    .topbar .toolbar-dropdown-toggle:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
 
     /* NEW in v5: Layer toggle button styling */
     .topbar button.active {
       background: rgba(255,255,255,0.3);
       border-color: rgba(255,255,255,0.6);
       font-weight: 600;
+    }
+
+    .toolbar-dropdown {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+    .toolbar-dropdown-main {
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+      border-right: 0;
+    }
+    .toolbar-dropdown-toggle {
+      min-width: 30px;
+      padding: 5px 8px;
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }
+    .toolbar-dropdown.open .toolbar-dropdown-toggle {
+      background: rgba(255,255,255,0.3);
+    }
+    .toolbar-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 180px;
+      background: #fff;
+      border: 1px solid #d2e3fc;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      padding: 6px;
+      z-index: 2000;
+      display: none;
+    }
+    .toolbar-dropdown.open .toolbar-dropdown-menu { display: block; }
+    .toolbar-dropdown-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      color: #202124;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .toolbar-dropdown-menu button:hover { background: #f1f3f4; }
+    .toolbar-dropdown-menu button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     /* ── Sidebar ── */
@@ -896,16 +959,28 @@
   <h1>📚 naoTab — Knowledge Base</h1>
   <div class="topbar-actions">
     <button id="btn-refresh" title="Refresh">🔄</button>
-    <button id="btn-export-graph" title="Export graph as HTML">📊 Export Graph</button>
-    <button id="btn-export">📤 Export JSON</button>
-    <button id="btn-export-obsidian">🟣 Export Obsidian</button>
+
+    <div class="toolbar-dropdown" id="export-dropdown">
+      <button id="btn-export" class="toolbar-dropdown-main" title="Export bookmarks to JSON">📤 Export JSON</button>
+      <button id="btn-export-toggle" class="toolbar-dropdown-toggle" title="More export options" aria-label="More export options">▾</button>
+      <div class="toolbar-dropdown-menu">
+        <button id="btn-export-graph" title="Export graph as HTML">📊 Export Graph</button>
+        <button id="btn-export-obsidian">🟣 Export Obsidian</button>
+      </div>
+    </div>
+
     <button id="btn-import-trigger">📥 Import JSON</button>
     <input type="file" id="btn-import" accept=".json" style="display:none" />
-    <!-- NEW in v5: Batch extraction -->
-    <button id="btn-extract-all" title="Extract metadata for all bookmarks">✨ AI Extract All</button>
-    <!-- NEW in v6c: Health & Lint checks -->
-    <button id="btn-health" title="Run health check (instant)">🏥 Health</button>
-    <button id="btn-lint" title="Run lint check (AI-powered)">🔍 Lint</button>
+
+    <div class="toolbar-dropdown" id="ai-dropdown">
+      <button id="btn-extract-all" class="toolbar-dropdown-main" title="Extract metadata for all bookmarks">✨ AI Extract All</button>
+      <button id="btn-ai-toggle" class="toolbar-dropdown-toggle" title="More AI & analysis tools" aria-label="More AI tools">▾</button>
+      <div class="toolbar-dropdown-menu">
+        <button id="btn-lint" title="Run lint check (AI-powered)">🔍 Lint</button>
+        <button id="btn-health" title="Run health check (instant)">🏥 Health</button>
+      </div>
+    </div>
+
     <button id="btn-delete-all" style="background:rgba(217,48,37,0.2);border-color:rgba(217,48,37,0.5);">🗑️ Delete all</button>
   </div>
 </div>

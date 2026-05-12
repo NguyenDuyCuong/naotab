@@ -1319,8 +1319,81 @@ document.getElementById('btn-refresh').addEventListener('click', async () => {
   allBookmarks = await getBookmarks();
   closeNodePanel();
   renderAll();
+  await refreshAIToolsState();
   showToast('🔄 Refreshed');
 });
+
+function initToolbarDropdowns() {
+  const dropdowns = Array.from(document.querySelectorAll('.toolbar-dropdown'));
+
+  function closeAll(except = null) {
+    dropdowns.forEach(dd => {
+      if (dd !== except) dd.classList.remove('open');
+    });
+  }
+
+  document.getElementById('btn-export-toggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dd = document.getElementById('export-dropdown');
+    const isOpen = dd.classList.contains('open');
+    closeAll();
+    if (!isOpen) dd.classList.add('open');
+  });
+
+  document.getElementById('btn-ai-toggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dd = document.getElementById('ai-dropdown');
+    const isOpen = dd.classList.contains('open');
+    closeAll();
+    if (!isOpen) dd.classList.add('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.toolbar-dropdown')) closeAll();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAll();
+  });
+
+  // Close dropdown when selecting an action
+  [
+    'btn-export-graph',
+    'btn-export-obsidian',
+    'btn-lint',
+    'btn-health'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', () => closeAll());
+    }
+  });
+}
+
+async function refreshAIToolsState() {
+  const settings = await getSettings();
+  const aiReady = !!(settings.aiEnabled && settings.aiBaseUrl && settings.aiModel);
+
+  const extractBtn = document.getElementById('btn-extract-all');
+  const aiToggleBtn = document.getElementById('btn-ai-toggle');
+  const lintBtn = document.getElementById('btn-lint');
+
+  if (extractBtn) {
+    extractBtn.disabled = !aiReady;
+    extractBtn.title = aiReady
+      ? 'Extract metadata for all bookmarks'
+      : 'AI not configured in Settings';
+  }
+  if (lintBtn) {
+    lintBtn.disabled = !aiReady;
+    lintBtn.title = aiReady
+      ? 'Run lint check (AI-powered)'
+      : 'AI not configured in Settings';
+  }
+  if (aiToggleBtn) {
+    aiToggleBtn.disabled = false; // Keep dropdown accessible so Health remains reachable
+  }
+}
 
 // NEW in v5: Layer toggle buttons
 ['concepts', 'entities', 'keywords'].forEach(layer => {
@@ -1345,6 +1418,9 @@ if (btnExtractAll) {
       showToast('❌ AI not configured. Enable in Settings.');
       return;
     }
+
+    initToolbarDropdowns();
+    refreshAIToolsState();
 
     const toExtract = allBookmarks.filter(b => !b.ai_extracted_fields || b.ai_extracted_fields.length === 0);
     if (toExtract.length === 0) {
