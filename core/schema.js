@@ -464,23 +464,29 @@ function normalizeConceptName(name) {
 /**
  * normalizeEntityName(name, type)
  * Normalize entity names to proper case.
- * For acronyms: keep uppercase.
+ * For known acronyms (1-4 letters): convert to uppercase.
  * For regular names: Title Case.
- * Example: "microsoft" → "Microsoft", "GPT-4" → "GPT-4", "OPEN AI" → "Open Ai"
+ * Example: "microsoft" → "Microsoft", "gpt" → "GPT", "open ai" → "Open Ai"
  */
 function normalizeEntityName(name, type) {
   if (!name) return '';
   
-  // Check if it's already all uppercase (acronym)
-  if (type === 'acronym' || /^[A-Z]+(-[A-Z]+)*$/.test(name.trim())) {
-    return name.toUpperCase();
+  const trimmed = name.trim().toLowerCase(); // Normalize to lowercase first
+  
+  // Check if it's a short acronym (1-4 letters, typically lowercase like "gpt", "llm", "ai")
+  if (type === 'acronym' || /^[a-z]{1,4}$/.test(trimmed)) {
+    return trimmed.toUpperCase();
   }
   
-  // Title case: capitalize first letter of each word
-  return name
-    .trim()
+  // Check for known short acronyms with hyphens like "gpt-4"
+  if (/^[a-z]+-[a-z0-9]+$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  
+  // Title case: capitalize first letter of each word (from lowercase version)
+  return trimmed
     .split(/\s+/)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
 

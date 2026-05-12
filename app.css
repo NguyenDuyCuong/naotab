@@ -276,3 +276,171 @@ svg text {
 .edge-concept { stroke: #ccc; stroke-opacity: 0.3; stroke-dasharray: 5,5; }
 .edge-entity { stroke: #ccc; stroke-opacity: 0.3; stroke-dasharray: 3,3; }
 .edge-keyword { stroke: #ccc; stroke-opacity: 0.3; stroke-dasharray: 2,2; }
+
+/* NEW in v6c: Health & Lint Modal Styles */
+.health-lint-modal {
+  width: 90vw;
+  max-width: 700px;
+  max-height: 80vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.health-lint-modal h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #202124;
+}
+
+.report-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.summary-card {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  border: 1px solid #e8eaed;
+}
+
+.summary-card .label {
+  display: block;
+  font-size: 11px;
+  color: #5f6368;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.summary-card .value {
+  display: block;
+  font-size: 20px;
+  font-weight: bold;
+  color: #1a73e8;
+}
+
+.report-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #e8eaed;
+  margin: 12px 0 0 0;
+  padding: 0;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  color: #5f6368;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: #202124;
+}
+
+.tab-btn.active {
+  border-bottom-color: #1a73e8;
+  color: #1a73e8;
+  font-weight: 600;
+}
+
+.report-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.tab-pane {
+  display: none;
+  padding: 12px;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+.report-info {
+  font-size: 11px;
+  color: #80868b;
+  margin: 0;
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.issue-item {
+  padding: 12px;
+  border-left: 4px solid #e8eaed;
+  border-radius: 4px;
+  background: #f8f9fa;
+}
+
+.issue-item.severity-high {
+  border-left-color: #d33025;
+  background: #fce8e6;
+}
+
+.issue-item.severity-medium {
+  border-left-color: #f9ab00;
+  background: #fef7e0;
+}
+
+.issue-item.severity-low {
+  border-left-color: #1a73e8;
+  background: #e8f0fe;
+}
+
+.issue-item.severity-info {
+  border-left-color: #4285f4;
+  background: #e8f0fe;
+}
+
+.issue-type {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  color: #202124;
+  letter-spacing: 0.3px;
+}
+
+.issue-message {
+  font-size: 12px;
+  color: #3c4043;
+  margin-bottom: 4px;
+}
+
+.issue-suggestion {
+  font-size: 11px;
+  color: #0d652d;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0,0,0,0.1);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid #e8eaed;
+  margin-top: auto;
+}
