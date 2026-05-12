@@ -1,5 +1,5 @@
 // ai.js — AI API calls and offline tag suggestion
-// Depends on: storage.js (getSettings)
+// Depends on: storage.js (getSettings), extraction.js (helper functions)
 
 /**
  * callAI(title, url, pageContent)
@@ -59,6 +59,132 @@ Example: {"tags":["rust","performance","async"],"summary":"Deep dive into async 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('Invalid AI response');
   return JSON.parse(jsonMatch[0]);
+}
+
+/**
+ * extractBookmarkMetadata(title, url, summary, pageMeta)
+ * AI-powered extraction of rich metadata: concepts, entities, keywords, content analysis.
+ * Returns {concepts, entities, keywords, key_statistics, purpose, thesis, key_message, 
+ *          ai_extracted_fields, extraction_confidence, extraction_timestamp}
+ * Uses helper functions from extraction.js; fallback if AI fails.
+ */
+async function extractBookmarkMetadata(title, url, summary, pageMeta) {
+  const settings = await getSettings();
+  const extractedFields = [];
+  let confidence = 0;
+  
+  // Fallback: use offline extraction helpers
+  const offlineFallback = () => {
+    const text = `${title}\n${summary}`;
+    return {
+      concepts: extractConcepts(text),
+      entities: extractEntities(text),
+      keywords: extractKeywords(text),
+      key_statistics: [],
+      purpose: '',
+      thesis: '',
+      key_message: summary ? summary.split('.')[0].trim() : title,
+      ai_extracted_fields: ['concepts', 'entities', 'keywords'],
+      extraction_confidence: 0.5,
+      extraction_timestamp: new Date().toISOString()
+    };
+  };
+  
+  // If AI not enabled, use offline extraction
+  if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
+    return offlineFallback();
+  }
+  
+  try {
+    const isAnthropic  = settings.aiBaseUrl.includes('anthropic.com');
+    const isOpenRouter = settings.aiBaseUrl.includes('openrouter.ai');
+    
+    // Build AI text from available content
+    const aiText = [title, summary, pageMeta?.description, pageMeta?.keywords]
+      .filter(s => s)
+      .join('\n')
+      .slice(0, 1000);
+    
+    const prompt = `You are analyzing a saved webpage for knowledge extraction.
+
+Title: "${title}"
+URL: "${url}"
+Summary: "${summary}"
+Content: "${aiText}"
+
+Extract and return ONLY valid JSON (no markdown, no explanation):
+{
+  "concepts": [
+    {"name": "concept name", "relevance": 0.85, "type": "topic|theory|methodology|principle"}
+  ],
+  "entities": [
+    {"name": "Entity Name", "type": "person|org|place|product", "value": "Optional value"}
+  ],
+  "key_statistics": [
+    {"stat": "Statistic name", "value": "123", "unit": "unit", "confidence": 0.9}
+  ],
+  "purpose": "Why was this content created?",
+  "thesis": "Main argument/claim in one sentence",
+  "key_message": "Single most important takeaway",
+  "confidence": 0.85
+}
+
+Return ONLY valid JSON, nothing else.`;
+
+    const headers = { 'Content-Type': 'application/json' };
+    let endpoint, body;
+
+    if (isAnthropic) {
+      headers['x-api-key'] = settings.aiApiKey;
+      headers['anthropic-version'] = '2023-06-01';
+      endpoint = `${settings.aiBaseUrl}/messages`;
+      body = { model: settings.aiModel, max_tokens: 512, messages: [{ role: 'user', content: prompt }] };
+    } else {
+      headers['Authorization'] = `Bearer ${settings.aiApiKey}`;
+      if (isOpenRouter) {
+        headers['HTTP-Referer'] = 'https://github.com/bsquang/naotab';
+        headers['X-Title'] = 'naoTab';
+      }
+      endpoint = `${settings.aiBaseUrl}/chat/completions`;
+      body = { model: settings.aiModel, max_tokens: 512, messages: [{ role: 'user', content: prompt }] };
+    }
+
+    const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), timeout: 30000 });
+    if (!res.ok) {
+      console.warn(`AI extraction failed (${res.status}), using fallback`);
+      return offlineFallback();
+    }
+
+    const data = await res.json();
+    const text = isAnthropic
+      ? data.content?.[0]?.text
+      : data.choices?.[0]?.message?.content;
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('Invalid AI extraction response, using fallback');
+      return offlineFallback();
+    }
+
+    const extracted = JSON.parse(jsonMatch[0]);
+    
+    // Validate and sanitize response
+    return {
+      concepts: Array.isArray(extracted.concepts) ? extracted.concepts.slice(0, 7) : [],
+      entities: Array.isArray(extracted.entities) ? extracted.entities.slice(0, 10) : [],
+      keywords: Array.isArray(extracted.keywords) ? extracted.keywords.slice(0, 10) : [],
+      key_statistics: Array.isArray(extracted.key_statistics) ? extracted.key_statistics.slice(0, 5) : [],
+      purpose: String(extracted.purpose || '').substring(0, 200),
+      thesis: String(extracted.thesis || '').substring(0, 300),
+      key_message: String(extracted.key_message || summary || title).substring(0, 100),
+      ai_extracted_fields: ['concepts', 'entities', 'key_statistics', 'purpose', 'thesis', 'key_message'],
+      extraction_confidence: Math.min(1, Math.max(0, Number(extracted.confidence) || 0.7)),
+      extraction_timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.warn('AI extraction error:', error.message);
+    return offlineFallback();
+  }
 }
 
 /**

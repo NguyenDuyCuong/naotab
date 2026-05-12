@@ -260,3 +260,19 @@ svg text {
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* NEW in v5: Multi-layer graph node type colors and styling */
+.node-type-bookmark { fill: #2563eb; }
+.node-type-concept { fill: #16a34a; }
+.node-type-entity { fill: #ea580c; }
+.node-type-keyword { fill: #eab308; }
+
+.graph-label-concept { fill: #166534; }
+.graph-label-entity { fill: #92400e; }
+.graph-label-keyword { fill: #ca8a04; }
+
+/* Edge type styling */
+.edge-bookmark { stroke: #999; stroke-opacity: 0.6; }
+.edge-concept { stroke: #ccc; stroke-opacity: 0.3; stroke-dasharray: 5,5; }
+.edge-entity { stroke: #ccc; stroke-opacity: 0.3; stroke-dasharray: 3,3; }
+.edge-keyword { stroke: #ccc; stroke-opacity: 0.3; stroke-dasharray: 2,2; }

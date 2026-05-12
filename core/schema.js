@@ -5,7 +5,7 @@
 //     Increment SCHEMA_VERSION when adding fields.
 //     Add a migration case in migrateBookmark() for each new version.
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 5;
 
 // Canonical shape of a bookmark object.
 // All fields must have a default value so old data is safe to migrate.
@@ -31,6 +31,32 @@ const BOOKMARK_DEFAULTS = {
   ai_tags:       false,      // Were tags suggested by AI?
   content_type:  'article',  // Detect: article|video|guide|tool|paper|bookmark
   reading_time:  0,          // Estimated minutes to read
+  
+  // NEW in v4: Publication & Content Context
+  publish_date:  null,       // ISO string or null
+  author:        '',         // Author name from meta
+  source:        '',         // Publication source/domain
+  origin:        '',         // Geographic/org origin if available
+  
+  // NEW in v4: Content Analysis
+  content_context: '',       // Extracted main topic/domain
+  purpose:       '',         // Why this content was created (AI-generated)
+  thesis:        '',         // Main argument/claim (AI-generated)
+  evidence:      [],         // Supporting evidence/data points (AI-generated)
+  key_message:   '',         // One-liner summary of main point
+  
+  // NEW in v4: Extracted Knowledge
+  concepts:      [],         // [{name, relevance (0-1), type}, ...] - high-level ideas
+  entities:      [],         // [{name, type ('person'|'org'|'place'|'product'), value}, ...] - named entities
+  keywords:      [],         // [{word, frequency (0-1), relevance (0-1)}, ...] - key terms
+  key_statistics: [],        // [{stat, value, unit, confidence (0-1)}, ...] - numbers/metrics
+  events:        [],         // [{name, date, importance (0-1)}, ...] - mentioned events
+  differentiators: [],       // [{aspect, description}, ...] - unique selling points
+  
+  // NEW in v4: Tracking
+  ai_extracted_fields: [],   // List of fields extracted by AI (e.g., ['concepts', 'entities', 'keywords'])
+  extraction_confidence: 0,  // Overall confidence score (0-1) from AI extraction
+  extraction_timestamp: null,// ISO timestamp of last AI extraction
   
   schemaVersion: SCHEMA_VERSION,
 };
@@ -86,6 +112,35 @@ function migrateBookmark(raw) {
     b.ai_tags = false;
     b.content_type = detectContentType(b.url, b.tags, b.pageMeta);
     b.reading_time = estimateReadingTime(b.summary);
+  }
+
+  // v3 → v4 → v5: Publication metadata & extraction fields (NEW!)
+  if (v < 5) {
+    // Extract metadata from pageMeta if available
+    b.publish_date = extractPublishDate(b.pageMeta);
+    b.author = extractAuthor(b.pageMeta) || '';
+    b.source = extractSource(b.pageMeta, b.url) || '';
+    b.origin = '';
+    
+    // Content analysis fields
+    b.content_context = '';
+    b.purpose = '';
+    b.thesis = '';
+    b.evidence = [];
+    b.key_message = '';
+    
+    // Extracted knowledge
+    b.concepts = [];
+    b.entities = [];
+    b.keywords = [];
+    b.key_statistics = [];
+    b.events = [];
+    b.differentiators = [];
+    
+    // Tracking
+    b.ai_extracted_fields = [];
+    b.extraction_confidence = 0;
+    b.extraction_timestamp = null;
   }
 
   b.schemaVersion = SCHEMA_VERSION;
@@ -299,3 +354,80 @@ function estimateReadingTime(summary) {
   const wordCount = summary.split(/\s+/).length;
   return Math.max(1, Math.ceil(wordCount / 200));
 }
+
+// ──────────────────────────────────────────────────────────────
+// NEW FUNCTIONS FOR v5: Metadata Extraction from pageMeta
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * extractPublishDate(pageMeta)
+ * Extract publish date from pageMeta if available.
+ */
+function extractPublishDate(pageMeta) {
+  if (!pageMeta) return null;
+  const meta = pageMeta || {};
+  // Common date fields in page metadata
+  if (meta.publish_date) return meta.publish_date;
+  if (meta.publishDate) return meta.publishDate;
+  if (meta.created) return meta.created;
+  if (meta.date) return meta.date;
+  return null;
+}
+
+/**
+ * extractAuthor(pageMeta)
+ * Extract author name from pageMeta.
+ */
+function extractAuthor(pageMeta) {
+  if (!pageMeta) return '';
+  const meta = pageMeta || {};
+  if (meta.author) return meta.author;
+  if (meta.creator) return meta.creator;
+  if (meta.article_author) return meta.article_author;
+  return '';
+}
+
+/**
+ * extractSource(pageMeta, url)
+ * Extract publication source from pageMeta or URL domain.
+ */
+function extractSource(pageMeta, url) {
+  if (!pageMeta && !url) return '';
+  const meta = pageMeta || {};
+  if (meta.siteName) return meta.siteName;
+  if (meta.site_name) return meta.site_name;
+  if (meta.publisher) return meta.publisher;
+  
+  // Fallback to domain
+  if (url) {
+    try {
+      const domain = new URL(url).hostname.replace('www.', '');
+      return domain;
+    } catch (_) {}
+  }
+  return '';
+}
+
+/**
+ * hasExtractedMetadata(bookmark)
+ * Check if bookmark has extracted metadata fields populated.
+ */
+function hasExtractedMetadata(bookmark) {
+  return bookmark.concepts.length > 0 || 
+         bookmark.entities.length > 0 || 
+         bookmark.keywords.length > 0;
+}
+
+/**
+ * isOptionalFieldSet(bookmark, field)
+ * Check if an optional v5 field is populated with non-default value.
+ */
+function isOptionalFieldSet(bookmark, field) {
+  const value = bookmark[field];
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'number') return value > 0;
+  return true;
+}
+

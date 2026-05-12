@@ -8,6 +8,20 @@ let editingId = null;
 let panelId = null; // id bookmark đang hiển thị trong panel
 let currentNetwork = null; // D3 graph instance (simulation, svg, links, nodes)
 
+// NEW in v5: Multi-layer graph support
+let layerToggles = {
+  concepts: JSON.parse(localStorage.getItem('layer_concepts') ?? 'true'),
+  entities: JSON.parse(localStorage.getItem('layer_entities') ?? 'true'),
+  keywords: JSON.parse(localStorage.getItem('layer_keywords') ?? 'false'),
+};
+const LAYER_COLORS = {
+  bookmark: '#2563eb',
+  concept: '#16a34a',
+  entity: '#ea580c',
+  keyword: '#eab308',
+};
+const MIN_RELEVANCE = 0.7; // Only show nodes with relevance >= 0.7
+
 // ── vis.js Color Constants [Removed - No longer needed with D3.js migration] ──
 
 // ── vis.js Data Transformation ─────────────────────────────────────────────────
@@ -686,35 +700,134 @@ function renderGraph(bookmarks) {
   const container = document.getElementById('graph-view');
   if (!container) return;
 
-  // Build edges and compute metrics
+  // Build edges and compute metrics for bookmarks only
   const edges = buildEdgesFromTags(bookmarks);
   const { nodes: metricNodes } = computeNodeMetrics(bookmarks, edges);
 
+  // NEW in v5: Build multi-layer nodes (concepts, entities, keywords)
+  const allNodes = [...metricNodes]; // Start with bookmark nodes
+  const nodeMap = {};
+  metricNodes.forEach(n => { nodeMap[n.id] = n; });
+  
+  // Extract concept nodes from bookmarks
+  if (layerToggles.concepts) {
+    bookmarks.forEach(b => {
+      if (b.concepts && Array.isArray(b.concepts)) {
+        b.concepts.forEach((concept, idx) => {
+          if (concept.relevance >= MIN_RELEVANCE) {
+            const conceptId = `concept_${b.id}_${idx}`;
+            allNodes.push({
+              id: conceptId,
+              type: 'concept',
+              title: concept.name,
+              relevance: concept.relevance,
+              parent: b.id,
+              value: 0.5,
+              degree: 0,
+              group: 999,
+              summary: '',
+              url: '',
+              reading_time: 0
+            });
+          }
+        });
+      }
+    });
+  }
+  
+  // Extract entity nodes from bookmarks
+  if (layerToggles.entities) {
+    bookmarks.forEach(b => {
+      if (b.entities && Array.isArray(b.entities)) {
+        b.entities.forEach((entity, idx) => {
+          const entityId = `entity_${b.id}_${idx}`;
+          allNodes.push({
+            id: entityId,
+            type: 'entity',
+            title: entity.name,
+            entity_type: entity.type,
+            parent: b.id,
+            value: 0.3,
+            degree: 0,
+            group: 999,
+            summary: '',
+            url: '',
+            reading_time: 0
+          });
+        });
+      }
+    });
+  }
+  
+  // Extract keyword nodes from bookmarks
+  if (layerToggles.keywords) {
+    bookmarks.forEach(b => {
+      if (b.keywords && Array.isArray(b.keywords)) {
+        b.keywords.forEach((kw, idx) => {
+          if (kw.relevance >= MIN_RELEVANCE) {
+            const kwId = `keyword_${b.id}_${idx}`;
+            allNodes.push({
+              id: kwId,
+              type: 'keyword',
+              title: kw.word,
+              frequency: kw.frequency,
+              relevance: kw.relevance,
+              parent: b.id,
+              value: 0.2,
+              degree: 0,
+              group: 999,
+              summary: '',
+              url: '',
+              reading_time: 0
+            });
+          }
+        });
+      }
+    });
+  }
+
+  // NEW in v5: Build edges between bookmarks and their metadata nodes
+  const allEdges = [...edges];
+  allNodes.forEach(node => {
+    if (node.parent) {
+      // Connect metadata nodes to their parent bookmark
+      allEdges.push({
+        source: node.parent,
+        target: node.id,
+        type: node.type === 'concept' ? 'has_concept' : (node.type === 'entity' ? 'has_entity' : 'has_keyword'),
+        label: '',
+        confidence: node.relevance || 0.8
+      });
+    }
+  });
+
   // Prepare D3 data format
   const data = {
-    nodes: metricNodes.map(n => ({
+    nodes: allNodes.map(n => ({
       id: n.id,
+      type: n.type || 'bookmark',
       group: n.group,
-      value: n.degree,
+      value: n.value,
       degree: n.degree,
       tags: n.tags || [],
       title: n.title || n.id,
       summary: n.summary || '',
       url: n.url || '',
       reading_time: n.reading_time || 5,
+      relevance: n.relevance || 1,
       ...n
     })),
-    links: edges.map(e => ({
-      source: e.from,
-      target: e.to,
+    links: allEdges.map(e => ({
+      source: e.source,
+      target: e.target,
       value: e.confidence || 1.0,
       label: e.label,
       type: e.type
     }))
   };
 
-  // Create D3 chart
-  const chart = createD3Chart(data, bookmarks);
+  // Create D3 chart with multi-layer support
+  const chart = createD3Chart(data, allNodes);
 
   // Render
   container.innerHTML = '';
@@ -769,7 +882,7 @@ function tuneForces(simulation, nodeCount, edgeCount, links) {
     .force("y", d3.forceY(0).strength(centerStrength));
 }
 
-function createD3Chart(data, bookmarks) {
+function createD3Chart(data, allNodes) {
   const container = document.getElementById('graph-view');
   const width = container.clientWidth || 928;
   const height = container.clientHeight || 680;
@@ -798,14 +911,43 @@ function createD3Chart(data, bookmarks) {
 
   svg.call(zoom);
 
-  // Links
+  // Links - NEW in v5: Style by relationship type
   const link = g.append("g")
-    .attr("stroke", "#999")
-    .attr("stroke-opacity", 0.6)
     .selectAll("line")
     .data(links)
     .join("line")
+    .attr("stroke", d => {
+      if (d.type === 'has_concept' || d.type === 'has_entity' || d.type === 'has_keyword') {
+        return '#ccc'; // Lighter color for metadata edges
+      }
+      return '#999'; // Regular edges between bookmarks
+    })
+    .attr("stroke-opacity", d => {
+      if (d.type === 'has_concept' || d.type === 'has_entity' || d.type === 'has_keyword') {
+        return 0.3; // Lower opacity for metadata edges
+      }
+      return 0.6;
+    })
+    .attr("stroke-dasharray", d => {
+      if (d.type === 'has_concept') return '5,5'; // Dashed for concepts
+      if (d.type === 'has_entity') return '3,3'; // Dotted for entities
+      if (d.type === 'has_keyword') return '2,2'; // Fine dots for keywords
+      return null;
+    })
     .attr("stroke-width", d => Math.sqrt(d.value || 1));
+
+  // NEW in v5: Node sizing and coloring by type
+  function getNodeRadius(d) {
+    if (d.type === 'bookmark') return 3 + (d.reading_time || 5) / 2; // Large
+    if (d.type === 'concept') return 5; // Medium
+    if (d.type === 'entity') return 3; // Small
+    if (d.type === 'keyword') return 2; // Tiny
+    return 3;
+  }
+
+  function getNodeColor(d) {
+    return LAYER_COLORS[d.type] || COMMUNITY_COLORS[d.group % COMMUNITY_COLORS.length];
+  }
 
   // Nodes
   const node = g.append("g")
@@ -814,15 +956,15 @@ function createD3Chart(data, bookmarks) {
     .selectAll("circle")
     .data(nodes)
     .join("circle")
-    .attr("r", d => 3 + (d.reading_time || 5) / 2)
-    .attr("fill", d => COMMUNITY_COLORS[d.group % COMMUNITY_COLORS.length])
+    .attr("r", getNodeRadius)
+    .attr("fill", getNodeColor)
     .style("cursor", "pointer");
 
   // Node tooltips
   node.append("title")
-    .text(d => bookmarks.find(b => b.id === d.id)?.title || d.id);
+    .text(d => d.title || d.id);
 
-  // Node labels (TODO 1)
+  // NEW in v5: Node labels with type awareness
   const labels = g.append("g")
     .attr("class", "graph-labels")
     .selectAll("text")
@@ -831,10 +973,15 @@ function createD3Chart(data, bookmarks) {
     .attr("class", "graph-label")
     .attr("text-anchor", "middle")
     .attr("pointer-events", "none")
-    .style("font-size", "10px")
-    .style("fill", "#666")
+    .style("font-size", d => d.type === 'keyword' ? '8px' : '10px')
+    .style("fill", d => {
+      if (d.type === 'concept') return '#166534';
+      if (d.type === 'entity') return '#92400e';
+      if (d.type === 'keyword') return '#ca8a04';
+      return '#666';
+    })
     .style("opacity", 0.8)
-    .text(d => truncateLabel(bookmarks.find(b => b.id === d.id)?.title || d.id));
+    .text(d => truncateLabel(d.title || d.id, d.type === 'keyword' ? 15 : 25));
 
   // Drag behavior
   function dragstarted(event) {
@@ -859,11 +1006,14 @@ function createD3Chart(data, bookmarks) {
     .on("drag", dragged)
     .on("end", dragended));
 
-  // Node click: highlight neighbors + open panel
+  // NEW in v5: Node click handling for both bookmarks and metadata nodes
   node.on("click", (event, d) => {
     event.stopPropagation();
     highlightNodeAndNeighbors(svg, d.id, links);
-    openNodePanel(d.id);
+    // Only open panel for bookmark nodes
+    if (d.type === 'bookmark') {
+      openNodePanel(d.id);
+    }
   });
 
   // Background click: reset highlight + close panel
@@ -872,9 +1022,9 @@ function createD3Chart(data, bookmarks) {
     closeNodePanel();
   });
 
-  // Double-click node: open URL
+  // Double-click node: open URL (bookmarks only)
   node.on("dblclick", (event, d) => {
-    if (d.url) window.open(d.url, '_blank');
+    if (d.type === 'bookmark' && d.url) window.open(d.url, '_blank');
   });
 
   // Track tick count for fit-to-bounds (TODO 3)
@@ -896,7 +1046,7 @@ function createD3Chart(data, bookmarks) {
 
     labels
       .attr("x", d => d.x)
-      .attr("y", d => d.y + 3 + (d.reading_time || 5) / 2 + 12);
+      .attr("y", d => d.y + 3 + getNodeRadius(d) + 10);
 
     // Apply fit-to-bounds when simulation stabilizes
     tickCount++;
@@ -1007,6 +1157,71 @@ document.getElementById('btn-refresh').addEventListener('click', async () => {
   renderAll();
   showToast('🔄 Refreshed');
 });
+
+// NEW in v5: Layer toggle buttons
+['concepts', 'entities', 'keywords'].forEach(layer => {
+  const btn = document.getElementById(`btn-layer-${layer}`);
+  if (btn) {
+    btn.classList.toggle('active', layerToggles[layer]);
+    btn.addEventListener('click', () => {
+      layerToggles[layer] = !layerToggles[layer];
+      localStorage.setItem(`layer_${layer}`, layerToggles[layer]);
+      btn.classList.toggle('active', layerToggles[layer]);
+      renderAll();
+    });
+  }
+});
+
+// NEW in v5: Batch extraction button
+const btnExtractAll = document.getElementById('btn-extract-all');
+if (btnExtractAll) {
+  btnExtractAll.addEventListener('click', async () => {
+    const settings = await getSettings();
+    if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
+      showToast('❌ AI not configured. Enable in Settings.');
+      return;
+    }
+
+    const toExtract = allBookmarks.filter(b => !b.ai_extracted_fields || b.ai_extracted_fields.length === 0);
+    if (toExtract.length === 0) {
+      showToast('✅ All bookmarks already extracted!');
+      return;
+    }
+
+    if (!confirm(`Extract metadata for ${toExtract.length} bookmarks? This may take a few minutes.`)) return;
+
+    btnExtractAll.disabled = true;
+    btnExtractAll.textContent = '⏳ 0/' + toExtract.length;
+
+    for (let i = 0; i < toExtract.length; i++) {
+      const b = toExtract[i];
+      try {
+        const extracted = await extractBookmarkMetadata(b.title, b.url, b.summary, b.pageMeta);
+        await updateBookmark(b.id, {
+          concepts: extracted.concepts,
+          entities: extracted.entities,
+          keywords: extracted.keywords,
+          key_statistics: extracted.key_statistics,
+          purpose: extracted.purpose,
+          thesis: extracted.thesis,
+          key_message: extracted.key_message,
+          ai_extracted_fields: extracted.ai_extracted_fields,
+          extraction_confidence: extracted.extraction_confidence,
+          extraction_timestamp: extracted.extraction_timestamp
+        });
+      } catch (e) {
+        console.warn('Extraction failed for', b.id, e);
+      }
+      btnExtractAll.textContent = `⏳ ${i + 1}/${toExtract.length}`;
+    }
+
+    allBookmarks = await getBookmarks();
+    renderAll();
+    btnExtractAll.disabled = false;
+    btnExtractAll.textContent = '✨ AI Extract All';
+    showToast(`✅ Extracted ${toExtract.length} bookmarks!`);
+  });
+}
 
 document.getElementById('btn-export-graph').addEventListener('click', () => {
   if (allBookmarks.length === 0) {
@@ -1263,6 +1478,79 @@ function openNodePanel(id) {
     connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
       el.addEventListener('click', () => openNodePanel(el.dataset.id));
     });
+  }
+
+  // NEW in v5: Display extracted metadata if available
+  const extractedEl = document.getElementById('panel-extracted');
+  if (extractedEl && b.ai_extracted_fields && b.ai_extracted_fields.length > 0) {
+    let extractedHtml = '<div class="panel-extracted-label">✨ AI Extracted Metadata</div>';
+    
+    if (b.extraction_confidence) {
+      extractedHtml += '<div class="panel-meta-row">' +
+        '<span class="panel-meta-key">Confidence</span>' +
+        '<span class="panel-meta-val">' + Math.round(b.extraction_confidence * 100) + '%</span>' +
+        '</div>';
+    }
+    
+    // Concepts
+    if (b.concepts && b.concepts.length > 0) {
+      extractedHtml += '<div class="panel-meta-label" style="margin-top:8px">Concepts</div>';
+      extractedHtml += b.concepts.map(c =>
+        '<div class="panel-meta-row">' +
+          '<span class="panel-meta-key" style="color:#166534">🟢 ' + escapeHtml(c.name) + '</span>' +
+          '<span class="panel-meta-val" style="color:#9aa0a6">' + Math.round(c.relevance * 100) + '%</span>' +
+        '</div>'
+      ).join('');
+    }
+    
+    // Entities
+    if (b.entities && b.entities.length > 0) {
+      extractedHtml += '<div class="panel-meta-label" style="margin-top:8px">Entities</div>';
+      extractedHtml += b.entities.map(e =>
+        '<div class="panel-meta-row">' +
+          '<span class="panel-meta-key" style="color:#92400e">🟠 ' + escapeHtml(e.name) + '</span>' +
+          '<span class="panel-meta-val" style="color:#9aa0a6">' + escapeHtml(e.type) + '</span>' +
+        '</div>'
+      ).join('');
+    }
+    
+    // Keywords
+    if (b.keywords && b.keywords.length > 0) {
+      extractedHtml += '<div class="panel-meta-label" style="margin-top:8px">Keywords</div>';
+      extractedHtml += b.keywords.slice(0, 5).map(k =>
+        '<div class="panel-meta-row">' +
+          '<span class="panel-meta-key" style="color:#ca8a04">🟡 ' + escapeHtml(k.word) + '</span>' +
+          '<span class="panel-meta-val" style="color:#9aa0a6">' + Math.round(k.relevance * 100) + '%</span>' +
+        '</div>'
+      ).join('');
+    }
+    
+    // Purpose, thesis, key message
+    if (b.purpose || b.thesis || b.key_message) {
+      extractedHtml += '<div class="panel-meta-label" style="margin-top:8px">Content Analysis</div>';
+      if (b.purpose) {
+        extractedHtml += '<div class="panel-meta-row">' +
+          '<span class="panel-meta-key">Purpose</span>' +
+          '<span class="panel-meta-val">' + escapeHtml(b.purpose) + '</span>' +
+          '</div>';
+      }
+      if (b.thesis) {
+        extractedHtml += '<div class="panel-meta-row">' +
+          '<span class="panel-meta-key">Thesis</span>' +
+          '<span class="panel-meta-val">' + escapeHtml(b.thesis) + '</span>' +
+          '</div>';
+      }
+      if (b.key_message) {
+        extractedHtml += '<div class="panel-meta-row">' +
+          '<span class="panel-meta-key">Key Message</span>' +
+          '<span class="panel-meta-val">' + escapeHtml(b.key_message) + '</span>' +
+          '</div>';
+      }
+    }
+    
+    extractedEl.innerHTML = extractedHtml;
+  } else if (extractedEl) {
+    extractedEl.innerHTML = '';
   }
 
   document.getElementById('node-panel').classList.add('open');

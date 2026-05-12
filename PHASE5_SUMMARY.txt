@@ -1,0 +1,112 @@
+PHASE 5 PLAN: COMPLETE & READY
+
+===== SCOPE =====
+• 12+ new metadata fields per bookmark
+• AI-powered extraction (concepts, entities, keywords, metadata)
+• Multi-node graph (bookmark + concept + entity + keyword nodes)
+• Enhanced visualization with color-coded node types
+
+===== KEY DECISIONS =====
+✓ Extraction Model: Hybrid (quick on save + full batch)
+✓ Content Types: Detect type, single generic prompt
+✓ Graph Layers: User preference toggle (remember choice)
+✓ Implementation: Continuous push (5a→5b→5c→5d)
+
+===== ARCHITECTURE =====
+Bookmarks (v5 schema)
+    ↓
+Knowledge Extraction (AI-powered)
+    ├─ Concepts (green nodes)
+    ├─ Entities (orange nodes)
+    ├─ Keywords (yellow nodes)
+    └─ Metadata (pub_date, author, source, etc.)
+    ↓
+Multi-Layer Graph (D3 visualization)
+    • Bookmark nodes: blue, large
+    • Concept nodes: green, medium
+    • Entity nodes: orange, small
+    • Keyword nodes: yellow, tiny
+
+===== IMPLEMENTATION PHASES =====
+Phase 5a: Schema v5 (2h)
+    - Add 12+ fields, migration, extraction helpers
+
+Phase 5b: AI Integration (3h)
+    - Extraction prompts, UI, batch "AI Extract All"
+
+Phase 5c: Multi-Layer Graph (4h)
+    - Multi-node types, layer toggle, node panel
+
+Phase 5d: Testing (2h)
+    - Schema migration, extraction quality, performance
+
+TOTAL: ~11 hours development
+
+===== 10 BLIND SPOTS (ALL MITIGATED) =====
+1. ✓ Prompt quality → Context detection + tuning
+2. ✓ Cost impact → Optional + batch efficiency
+3. ✓ Graph scaling → Layer toggle + filtering
+4. ✓ Data conflicts → Show diff before re-extract
+5. ✓ Entity duplication → Phase 5 separate, Phase 6 merge
+6. ✓ Hallucination → Strict prompt, "Not found" for missing
+7. ✓ Relationship types → Generic Phase 5, typed Phase 6
+8. ✓ UI complexity → Collapsible sections + labels
+9. ✓ Mobile UX → Toggle off by default + simplified
+10. ✓ Migration bugs → Comprehensive tests + rollback
+
+===== NEW FIELDS (v5 Schema) =====
+Publication & Source:
+  - publish_date
+  - author
+  - source
+  - origin
+
+Content Structure:
+  - content_context
+  - purpose
+  - thesis
+  - evidence
+  - key_message
+
+Structured Metadata:
+  - concepts [{name, relevance, type}]
+  - entities [{name, type, value}]
+  - keywords [{word, frequency, relevance}]
+  - key_statistics [{label, value, context}]
+  - events [{date, description}]
+  - differentiators [list]
+
+Extraction Tracking:
+  - ai_extracted_fields [list]
+  - extraction_confidence (0-1)
+  - extraction_timestamp
+
+===== SUCCESS CRITERIA =====
+• Extraction accuracy > 80%
+• Zero hallucinated fields
+• Graph render < 5s (50 bookmarks + 300 nodes)
+• v3→v5 migration 100% success
+• Storage < 9MB for 1000 bookmarks
+• All Phase 4.2 features preserved
+
+===== FILES TO CREATE/MODIFY =====
+Create:
+  • core/extraction.js (extraction engine)
+  • test_phase5.js (test suite)
+
+Modify:
+  • core/schema.js (v5 fields + migration)
+  • core/ai.js (extraction prompts)
+  • app.js (multi-layer graph)
+  • popup.js (extraction UI)
+  • app.css (node type colors)
+
+===== STATUS =====
+✓ Design complete
+✓ 10 blind spots analyzed
+✓ User decisions captured
+✓ Architecture validated
+✓ Test strategy outlined
+✓ SQL todos created (5 tasks)
+
+READY TO IMPLEMENT!
