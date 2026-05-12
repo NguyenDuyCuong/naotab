@@ -1375,14 +1375,6 @@ if (btnExtractAll) {
 
 // ── AI Batch Processing Helper ────────────────────────────────────────────────
 
-    allBookmarks = await getBookmarks();
-    renderAll();
-    btnExtractAll.disabled = false;
-    btnExtractAll.textContent = '✨ AI Extract All';
-    showToast(`✅ Extracted ${toExtract.length} bookmarks!`);
-  });
-}
-
 document.getElementById('btn-export-graph').addEventListener('click', () => {
   if (allBookmarks.length === 0) {
     showToast('⚠️ No bookmarks to export!');
