@@ -818,8 +818,8 @@ function renderGraph(bookmarks) {
       ...n
     })),
     links: allEdges.map(e => ({
-      source: e.source,
-      target: e.target,
+      source: e.source || e.from,
+      target: e.target || e.to,
       value: e.confidence || 1.0,
       label: e.label,
       type: e.type
@@ -898,7 +898,7 @@ function createD3Chart(data, allNodes) {
     .attr("width", width)
     .attr("height", height)
     .attr("viewBox", [-width / 2, -height / 2, width, height])
-    .attr("style", "max-width: 100%; height: auto; background: #f8f9fa;");
+    .attr("style", "width: 100%; height: 100%; background: #f8f9fa;");
 
   // Zoom and pan functionality (TODO 2)
   const g = svg.append("g").attr("class", "graph-content");
