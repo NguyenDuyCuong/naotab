@@ -545,6 +545,122 @@ function generateStaticHTML(nodes, edges) {
   return html;
 }
 
+// ── Export helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * downloadFile(htmlContent, filename)
+ * Trigger browser download of HTML file
+ *
+ * @param {string} htmlContent - Complete HTML string to download
+ * @param {string} filename - Output filename (e.g. 'naotab-graph.html')
+ * @returns {void}
+ */
+function downloadFile(htmlContent, filename) {
+  try {
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  } catch (err) {
+    console.error('Download failed:', err);
+  }
+}
+
+/**
+ * showExportModal()
+ * Display modal with export options
+ */
+function showExportModal() {
+  const existingModal = document.getElementById('export-modal');
+  if (existingModal) existingModal.remove();
+
+  const today = new Date().toISOString().split('T')[0];
+  const modal = document.createElement('div');
+  modal.id = 'export-modal';
+  modal.innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal-content export-modal">
+        <h3>📊 Export Graph Options</h3>
+        <div class="export-options">
+          <label>
+            <input type="checkbox" id="export-include-filters" checked>
+            Include current filters (tags, search)
+          </label>
+          <label>
+            <input type="checkbox" id="export-colors" checked>
+            Use community colors
+          </label>
+          <label>
+            Filename
+            <input type="text" id="export-filename" placeholder="naotab-graph.html" value="naotab-graph-${today}.html">
+          </label>
+        </div>
+        <div class="export-info">
+          <p id="export-count">Preparing...</p>
+        </div>
+        <div class="export-actions">
+          <button id="export-cancel" class="btn-secondary">Cancel</button>
+          <button id="export-confirm" class="btn-primary">📥 Export</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const includeFilters = document.getElementById('export-include-filters');
+  const confirm = document.getElementById('export-confirm');
+  const cancel = document.getElementById('export-cancel');
+  const filename = document.getElementById('export-filename');
+  const countDisplay = document.getElementById('export-count');
+
+  // Show count of bookmarks to be exported
+  const bookmarksToExport = includeFilters.checked ? getFiltered() : allBookmarks;
+  countDisplay.textContent = `${bookmarksToExport.length} node(s) will be exported`;
+
+  includeFilters.addEventListener('change', () => {
+    const count = includeFilters.checked ? getFiltered() : allBookmarks;
+    countDisplay.textContent = `${count.length} node(s) will be exported`;
+  });
+
+  confirm.addEventListener('click', async () => {
+    try {
+      confirm.disabled = true;
+      confirm.textContent = '⏳ Exporting...';
+
+      const bookmarks = includeFilters.checked ? getFiltered() : allBookmarks;
+      const edges = buildEdgesFromTags(bookmarks);
+      const { nodes: metricNodes } = computeNodeMetrics(bookmarks, edges);
+      const nodes = assignCommunityColors(metricNodes);
+
+      const html = generateStaticHTML(nodes, edges);
+      downloadFile(html, filename.value || 'naotab-graph.html');
+
+      modal.remove();
+      showToast('✅ Graph exported successfully!');
+    } catch (err) {
+      console.error('Export failed:', err);
+      showToast('❌ Export failed');
+      confirm.disabled = false;
+      confirm.textContent = '📥 Export';
+    }
+  });
+
+  cancel.addEventListener('click', () => modal.remove());
+
+  // Close on background click
+  modal.querySelector('.modal-overlay').addEventListener('click', (e) => {
+    if (e.target === modal.querySelector('.modal-overlay')) {
+      modal.remove();
+    }
+  });
+}
+
 // ── Graph view ─────────────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   const svg = d3.select('#graph-svg');
@@ -725,6 +841,14 @@ document.getElementById('btn-refresh').addEventListener('click', async () => {
   closeNodePanel();
   renderAll();
   showToast('🔄 Refreshed');
+});
+
+document.getElementById('btn-export-graph').addEventListener('click', () => {
+  if (allBookmarks.length === 0) {
+    showToast('⚠️ No bookmarks to export!');
+    return;
+  }
+  showExportModal();
 });
 
 document.getElementById('btn-export').addEventListener('click', async () => {
