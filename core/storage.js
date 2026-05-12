@@ -12,12 +12,29 @@
 
 const STORAGE_KEY  = 'tab_bookmarks';
 const SETTINGS_KEY = 'tab_explorer_settings';
+const LEGACY_SETTINGS_KEYS = ['tab_settings', 'settings', 'naotab_settings'];
 
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
 async function getSettings() {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  return { ...SETTINGS_DEFAULTS, ...(result[SETTINGS_KEY] || {}) };
+  const current = result[SETTINGS_KEY];
+  if (current && typeof current === 'object') {
+    return { ...SETTINGS_DEFAULTS, ...current };
+  }
+
+  const legacy = await chrome.storage.local.get(LEGACY_SETTINGS_KEYS);
+  const legacySettings = LEGACY_SETTINGS_KEYS
+    .map(k => legacy[k])
+    .find(v => v && typeof v === 'object');
+
+  if (legacySettings) {
+    const merged = { ...SETTINGS_DEFAULTS, ...legacySettings };
+    await chrome.storage.local.set({ [SETTINGS_KEY]: merged });
+    return merged;
+  }
+
+  return { ...SETTINGS_DEFAULTS };
 }
 
 async function saveSettings(settings) {

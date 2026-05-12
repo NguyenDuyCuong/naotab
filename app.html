@@ -122,6 +122,139 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    .toolbar-dropdown-menu hr {
+      border: 0;
+      border-top: 1px solid #eceff1;
+      margin: 6px 2px;
+    }
+    .toolbar-dropdown-menu .menu-hint {
+      font-size: 11px;
+      color: #5f6368;
+      padding: 6px 8px;
+      line-height: 1.4;
+    }
+
+    .topbar-async {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 6px;
+      max-width: 280px;
+    }
+    .topbar-async.hidden { display: none; }
+    .topbar-async-label {
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 180px;
+    }
+    .topbar-async-progress {
+      width: 72px;
+      height: 6px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 99px;
+      overflow: hidden;
+      flex-shrink: 0;
+      display: none;
+    }
+    .topbar-async-progress.visible { display: block; }
+    .topbar-async-fill {
+      height: 100%;
+      width: 0%;
+      background: #fff;
+      border-radius: 99px;
+      transition: width 0.2s;
+    }
+
+    .overlay-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .overlay-modal.hidden { display: none; }
+    .overlay-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+    }
+    .overlay-modal-content {
+      position: relative;
+      z-index: 1801;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+      border: 1px solid #e0e0e0;
+      padding: 16px;
+      width: 420px;
+      max-width: calc(100vw - 32px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .overlay-modal-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #202124;
+    }
+    .overlay-modal-text {
+      color: #3c4043;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .overlay-modal-field label {
+      display: block;
+      font-size: 11px;
+      color: #5f6368;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      letter-spacing: 0.4px;
+    }
+    .overlay-modal-field input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+    .overlay-modal-field input:focus { border-color: #1a73e8; }
+    .overlay-modal-summary {
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fafbfc;
+      font-size: 12px;
+      color: #3c4043;
+      line-height: 1.6;
+    }
+    .overlay-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .btn-danger {
+      padding: 7px 18px;
+      background: #d93025;
+      color: #fff;
+      border: 1px solid #d93025;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-danger:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
 
     /* ── Sidebar ── */
     .sidebar {
@@ -957,6 +1090,12 @@
 <!-- Top bar -->
 <div class="topbar">
   <h1>📚 naoTab — Knowledge Base</h1>
+  <div id="topbar-async-status" class="topbar-async hidden" aria-live="polite">
+    <span id="topbar-async-label" class="topbar-async-label"></span>
+    <div id="topbar-async-progress" class="topbar-async-progress">
+      <div id="topbar-async-fill" class="topbar-async-fill"></div>
+    </div>
+  </div>
   <div class="topbar-actions">
     <button id="btn-refresh" title="Refresh">🔄</button>
 
@@ -978,6 +1117,9 @@
       <div class="toolbar-dropdown-menu">
         <button id="btn-lint" title="Run lint check (AI-powered)">🔍 Lint</button>
         <button id="btn-health" title="Run health check (instant)">🏥 Health</button>
+        <hr />
+        <div id="ai-menu-hint" class="menu-hint hidden">AI not configured</div>
+        <button id="btn-open-settings" title="Open Settings">⚙️ Open Settings</button>
       </div>
     </div>
 
@@ -1080,6 +1222,36 @@
   </div>
 </div>
 
+  <!-- Delete all: safer 2-step confirmation -->
+  <div id="delete-all-modal" class="overlay-modal hidden">
+    <div class="overlay-modal-backdrop"></div>
+    <div class="overlay-modal-content">
+      <div class="overlay-modal-title">🗑️ Delete all bookmarks</div>
+      <div class="overlay-modal-text">This action cannot be undone. To confirm, type <strong>DELETE</strong> below.</div>
+      <div class="overlay-modal-field">
+        <label for="delete-all-confirm-input">Type DELETE to continue</label>
+        <input id="delete-all-confirm-input" type="text" placeholder="DELETE" />
+      </div>
+      <div class="overlay-modal-actions">
+        <button id="delete-all-cancel" class="btn-secondary">Cancel</button>
+        <button id="delete-all-confirm" class="btn-danger" disabled>Delete all</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import preflight summary -->
+  <div id="import-preflight-modal" class="overlay-modal hidden">
+    <div class="overlay-modal-backdrop"></div>
+    <div class="overlay-modal-content">
+      <div class="overlay-modal-title">📥 Import JSON summary</div>
+      <div class="overlay-modal-text">Review impact before importing.</div>
+      <div id="import-preflight-summary" class="overlay-modal-summary"></div>
+      <div class="overlay-modal-actions">
+        <button id="import-preflight-cancel" class="btn-secondary">Cancel</button>
+        <button id="import-preflight-confirm" class="btn-primary">Continue Import</button>
+      </div>
+    </div>
+  </div>
 <!-- Node detail panel -->
 <div id="node-panel">
   <div class="panel-header">

@@ -1340,8 +1340,9 @@ function initToolbarDropdowns() {
     if (!isOpen) dd.classList.add('open');
   });
 
-  document.getElementById('btn-ai-toggle').addEventListener('click', (e) => {
+  document.getElementById('btn-ai-toggle').addEventListener('click', async (e) => {
     e.stopPropagation();
+    await refreshAIToolsState();
     const dd = document.getElementById('ai-dropdown');
     const isOpen = dd.classList.contains('open');
     closeAll();
@@ -1360,6 +1361,8 @@ function initToolbarDropdowns() {
   [
     'btn-export-graph',
     'btn-export-obsidian',
+    'btn-open-settings',
+    'btn-extract-all',
     'btn-lint',
     'btn-health'
   ].forEach(id => {
@@ -1372,28 +1375,79 @@ function initToolbarDropdowns() {
 
 async function refreshAIToolsState() {
   const settings = await getSettings();
-  const aiReady = !!(settings.aiEnabled && settings.aiBaseUrl && settings.aiModel);
+  const aiReady = !!settings.aiEnabled;
 
   const extractBtn = document.getElementById('btn-extract-all');
   const aiToggleBtn = document.getElementById('btn-ai-toggle');
   const lintBtn = document.getElementById('btn-lint');
+  const aiMenuHint = document.getElementById('ai-menu-hint');
 
   if (extractBtn) {
     extractBtn.disabled = !aiReady;
     extractBtn.title = aiReady
       ? 'Extract metadata for all bookmarks'
-      : 'AI not configured in Settings';
+      : 'AI not configured';
   }
   if (lintBtn) {
     lintBtn.disabled = !aiReady;
     lintBtn.title = aiReady
       ? 'Run lint check (AI-powered)'
-      : 'AI not configured in Settings';
+      : 'AI not configured';
   }
   if (aiToggleBtn) {
     aiToggleBtn.disabled = false; // Keep dropdown accessible so Health remains reachable
   }
+  if (aiMenuHint) {
+    aiMenuHint.classList.toggle('hidden', aiReady);
+  }
 }
+
+function openSettingsPage() {
+  const fallbackUrl = chrome?.runtime?.getURL
+    ? chrome.runtime.getURL('settings.html')
+    : 'settings.html';
+  if (chrome?.runtime?.openOptionsPage) {
+    Promise.resolve(chrome.runtime.openOptionsPage())
+      .catch(() => {
+        window.location.href = fallbackUrl;
+      });
+    return;
+  }
+  window.location.href = fallbackUrl;
+}
+
+function setTopbarAsyncStatus(label, progressPercent = null) {
+  const wrap = document.getElementById('topbar-async-status');
+  const text = document.getElementById('topbar-async-label');
+  const progress = document.getElementById('topbar-async-progress');
+  const fill = document.getElementById('topbar-async-fill');
+  if (!wrap || !text || !progress || !fill) return;
+  text.textContent = label || '';
+  if (typeof progressPercent === 'number') {
+    progress.classList.add('visible');
+    fill.style.width = `${Math.max(0, Math.min(100, progressPercent))}%`;
+  } else {
+    progress.classList.remove('visible');
+    fill.style.width = '0%';
+  }
+  wrap.classList.remove('hidden');
+}
+
+function clearTopbarAsyncStatus() {
+  const wrap = document.getElementById('topbar-async-status');
+  const text = document.getElementById('topbar-async-label');
+  const progress = document.getElementById('topbar-async-progress');
+  const fill = document.getElementById('topbar-async-fill');
+  if (!wrap || !text || !progress || !fill) return;
+  wrap.classList.add('hidden');
+  text.textContent = '';
+  progress.classList.remove('visible');
+  fill.style.width = '0%';
+}
+
+document.getElementById('btn-open-settings').addEventListener('click', () => {
+  openSettingsPage();
+});
 
 // NEW in v5: Layer toggle buttons
 ['concepts', 'entities', 'keywords'].forEach(layer => {
@@ -1414,13 +1468,11 @@ const btnExtractAll = document.getElementById('btn-extract-all');
 if (btnExtractAll) {
   btnExtractAll.addEventListener('click', async () => {
     const settings = await getSettings();
-    if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
-      showToast('❌ AI not configured. Enable in Settings.');
+    if (!settings.aiEnabled) {
+      showToast('❌ AI not configured');
+      openSettingsPage();
       return;
     }
-
-    initToolbarDropdowns();
-    refreshAIToolsState();
 
     const toExtract = allBookmarks.filter(b => !b.ai_extracted_fields || b.ai_extracted_fields.length === 0);
     if (toExtract.length === 0) {
@@ -1432,6 +1484,7 @@ if (btnExtractAll) {
 
     btnExtractAll.disabled = true;
     btnExtractAll.textContent = '⏳ 0/' + toExtract.length;
+    setTopbarAsyncStatus(`AI Extract 0/${toExtract.length}`, 0);
 
     for (let i = 0; i < toExtract.length; i++) {
       const b = toExtract[i];
@@ -1481,6 +1534,8 @@ if (btnExtractAll) {
         });
         
         btnExtractAll.textContent = '⏳ ' + (i + 1) + '/' + toExtract.length;
+        const percent = ((i + 1) / toExtract.length) * 100;
+        setTopbarAsyncStatus(`AI Extract ${i + 1}/${toExtract.length}`, percent);
       } catch (e) {
         console.warn('Extraction failed for bookmark ' + b.id + ':', e.message);
       }
@@ -1490,6 +1545,7 @@ if (btnExtractAll) {
     renderAll();
     btnExtractAll.disabled = false;
     btnExtractAll.textContent = '✨ AI Extract All';
+    clearTopbarAsyncStatus();
     showToast('✅ Extraction complete for ' + toExtract.length + ' bookmarks!');
   });
 }
@@ -1521,6 +1577,7 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
   const btn = document.getElementById('btn-export-obsidian');
   btn.disabled = true;
   btn.textContent = '⏳ Generating...';
+  setTopbarAsyncStatus('Exporting Obsidian vault...');
 
   try {
     const files = await exportObsidian();
@@ -1577,6 +1634,7 @@ document.getElementById('btn-export-obsidian').addEventListener('click', async (
   } finally {
     btn.disabled = false;
     btn.textContent = '🟣 Export Obsidian';
+    clearTopbarAsyncStatus();
   }
 });
 
@@ -1588,12 +1646,21 @@ document.getElementById('btn-import').addEventListener('change', async (e) => {
   if (!file) return;
   const text = await file.text();
   try {
+    const summary = await previewImportJSON(text);
+    const proceed = await showImportPreflightModal(summary, file.name);
+    if (!proceed) {
+      e.target.value = '';
+      return;
+    }
+    setTopbarAsyncStatus('Importing JSON...');
     const result = await importJSON(text);
     allBookmarks = await getBookmarks();
     renderAll();
     showToast('✅ Imported ' + result.imported + ' bookmarks (skipped ' + result.skipped + ' duplicates)');
   } catch (err) {
     showToast('❌ Invalid JSON file');
+  } finally {
+    clearTopbarAsyncStatus();
   }
   e.target.value = '';
 });
@@ -1618,6 +1685,114 @@ function getContentTypeEmoji(type) {
 function findBookmarkById(id) {
   const key = String(id);
   return allBookmarks.find(x => String(x.id) === key);
+}
+
+async function previewImportJSON(jsonString) {
+  const data = JSON.parse(jsonString);
+  const incomingRaw = Array.isArray(data) ? data : (data.bookmarks || []);
+  if (!Array.isArray(incomingRaw)) throw new Error('Invalid import payload');
+
+  const existing = await getBookmarks();
+  const existingUrls = new Set(existing.map(b => b.url));
+
+  let valid = 0;
+  let duplicates = 0;
+  let invalid = 0;
+  const newUrls = new Set();
+
+  incomingRaw.forEach(raw => {
+    try {
+      const b = migrateBookmark(raw);
+      if (!b || !b.url) {
+        invalid++;
+        return;
+      }
+      valid++;
+      if (existingUrls.has(b.url) || newUrls.has(b.url)) {
+        duplicates++;
+      } else {
+        newUrls.add(b.url);
+      }
+    } catch {
+      invalid++;
+    }
+  });
+
+  return {
+    total: incomingRaw.length,
+    valid,
+    duplicates,
+    invalid,
+    toImport: Math.max(0, valid - duplicates)
+  };
+}
+
+function showImportPreflightModal(summary, fileName = '') {
+  const modal = document.getElementById('import-preflight-modal');
+  const summaryEl = document.getElementById('import-preflight-summary');
+  const cancelBtn = document.getElementById('import-preflight-cancel');
+  const confirmBtn = document.getElementById('import-preflight-confirm');
+
+  summaryEl.innerHTML =
+    `<div><strong>File:</strong> ${escapeHtml(fileName || 'Selected file')}</div>` +
+    `<div><strong>Total records:</strong> ${summary.total}</div>` +
+    `<div><strong>Valid records:</strong> ${summary.valid}</div>` +
+    `<div><strong>Will import:</strong> ${summary.toImport}</div>` +
+    `<div><strong>Duplicates:</strong> ${summary.duplicates}</div>` +
+    `<div><strong>Invalid records:</strong> ${summary.invalid}</div>`;
+
+  modal.classList.remove('hidden');
+
+  return new Promise(resolve => {
+    const close = (result) => {
+      modal.classList.add('hidden');
+      cancelBtn.onclick = null;
+      confirmBtn.onclick = null;
+      modal.onclick = null;
+      resolve(result);
+    };
+
+    cancelBtn.onclick = () => close(false);
+    confirmBtn.onclick = () => close(true);
+    modal.onclick = (ev) => {
+      if (ev.target.classList.contains('overlay-modal-backdrop')) close(false);
+    };
+  });
+}
+
+function showDeleteAllModal(total) {
+  const modal = document.getElementById('delete-all-modal');
+  const input = document.getElementById('delete-all-confirm-input');
+  const cancelBtn = document.getElementById('delete-all-cancel');
+  const confirmBtn = document.getElementById('delete-all-confirm');
+
+  input.value = '';
+  confirmBtn.disabled = true;
+  input.placeholder = `Type DELETE to remove ${total} bookmarks`;
+  modal.classList.remove('hidden');
+  input.focus();
+
+  return new Promise(resolve => {
+    const onInput = () => {
+      confirmBtn.disabled = input.value.trim().toUpperCase() !== 'DELETE';
+    };
+
+    const close = (result) => {
+      modal.classList.add('hidden');
+      input.removeEventListener('input', onInput);
+      cancelBtn.onclick = null;
+      confirmBtn.onclick = null;
+      modal.onclick = null;
+      resolve(result);
+    };
+
+    input.addEventListener('input', onInput);
+    cancelBtn.onclick = () => close(false);
+    confirmBtn.onclick = () => close(true);
+    modal.onclick = (ev) => {
+      if (ev.target.classList.contains('overlay-modal-backdrop')) close(false);
+    };
+  });
 }
 
 // ── Node detail panel ──────────────────────────────────────────────────────────
@@ -1789,7 +1964,7 @@ function openBookmarkPanel(bookmarkId) {
   // Show AI row only if AI is enabled
   getSettings().then(settings => {
     const aiRow = document.getElementById('panel-ai-row');
-    if (settings.aiEnabled && settings.aiBaseUrl && settings.aiModel) {
+    if (settings.aiEnabled) {
       aiRow.classList.remove('hidden');
     } else {
       aiRow.classList.add('hidden');
@@ -2411,12 +2586,13 @@ document.getElementById('panel-delete').addEventListener('click', async () => {
 // ── Delete all ─────────────────────────────────────────────────────────────────
 document.getElementById('btn-delete-all').addEventListener('click', async () => {
   if (allBookmarks.length === 0) { showToast('⚠️ No bookmarks yet!'); return; }
-  if (!confirm('Delete all ' + allBookmarks.length + ' bookmarks? This cannot be undone!')) return;
+  const approved = await showDeleteAllModal(allBookmarks.length);
+  if (!approved) return;
   await chrome.storage.local.remove('tab_bookmarks');
   allBookmarks = [];
   closeNodePanel();
   renderAll();
-  showToast('🗑️ Deleted tất cả!');
+  showToast('🗑️ Deleted all bookmarks!');
 });
 
 // ── Toast ──────────────────────────────────────────────────────────────────────
@@ -2768,6 +2944,8 @@ document.getElementById('report-save').addEventListener('click', () => {
 // Init — default graph view
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
+    initToolbarDropdowns();
+    refreshAIToolsState();
     document.getElementById('list-view').style.display = 'none';
     document.getElementById('graph-view').style.display = 'block';
     document.getElementById('btn-graph-view').classList.add('active');
@@ -2775,6 +2953,8 @@ if (document.readyState === 'loading') {
     init();
   });
 } else {
+  initToolbarDropdowns();
+  refreshAIToolsState();
   document.getElementById('list-view').style.display = 'none';
   document.getElementById('graph-view').style.display = 'block';
   document.getElementById('btn-graph-view').classList.add('active');
