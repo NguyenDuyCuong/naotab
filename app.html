@@ -878,13 +878,8 @@
     <button id="btn-export-obsidian">🟣 Export Obsidian</button>
     <button id="btn-import-trigger">📥 Import JSON</button>
     <input type="file" id="btn-import" accept=".json" style="display:none" />
-    <!-- NEW in v5: Multi-layer graph toggles -->
-    <button id="btn-layer-concepts" title="Toggle concept nodes">🟢 Concepts</button>
-    <button id="btn-layer-entities" title="Toggle entity nodes">🟠 Entities</button>
-    <button id="btn-layer-keywords" title="Toggle keyword nodes">🟡 Keywords</button>
     <!-- NEW in v5: Batch extraction -->
     <button id="btn-extract-all" title="Extract metadata for all bookmarks">✨ AI Extract All</button>
-    <button id="btn-ai-batch" title="AI all visible nodes">✨ AI All</button>
     <button id="btn-delete-all" style="background:rgba(217,48,37,0.2);border-color:rgba(217,48,37,0.5);">🗑️ Delete all</button>
   </div>
 </div>
@@ -894,6 +889,29 @@
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-top">
+      <!-- NEW in v5: Layers section (collapsible) -->
+      <div class="sidebar-section">
+        <h3 class="sidebar-section-header" id="layers-toggle" style="cursor: pointer; user-select: none;">
+          🎨 Layers <span style="float: right; font-size: 12px;">▼</span>
+        </h3>
+        <div id="layers-content" class="sidebar-section-content" style="display: block;">
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 4px 0;">
+            <label style="padding: 4px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" id="layer-concepts-toggle" checked style="cursor: pointer;">
+              <span>🟢 Concepts</span>
+            </label>
+            <label style="padding: 4px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" id="layer-entities-toggle" checked style="cursor: pointer;">
+              <span>🟠 Entities</span>
+            </label>
+            <label style="padding: 4px 12px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" id="layer-keywords-toggle" style="cursor: pointer;">
+              <span>🟡 Keywords</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      
       <div class="sidebar-section">
         <h3>Tags</h3>
         <div id="tag-cloud" class="tag-cloud"></div>

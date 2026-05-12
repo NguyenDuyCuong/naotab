@@ -709,82 +709,79 @@ function renderGraph(bookmarks) {
   const nodeMap = {};
   metricNodes.forEach(n => { nodeMap[n.id] = n; });
   
-  // Extract concept nodes from bookmarks
-  if (layerToggles.concepts) {
-    bookmarks.forEach(b => {
-      if (b.concepts && Array.isArray(b.concepts)) {
-        b.concepts.forEach((concept, idx) => {
-          if (concept.relevance >= MIN_RELEVANCE) {
-            const conceptId = `concept_${b.id}_${idx}`;
-            allNodes.push({
-              id: conceptId,
-              type: 'concept',
-              title: concept.name,
-              relevance: concept.relevance,
-              parent: b.id,
-              value: 0.5,
-              degree: 0,
-              group: 999,
-              summary: '',
-              url: '',
-              reading_time: 0
-            });
-          }
-        });
-      }
-    });
-  }
-  
-  // Extract entity nodes from bookmarks
-  if (layerToggles.entities) {
-    bookmarks.forEach(b => {
-      if (b.entities && Array.isArray(b.entities)) {
-        b.entities.forEach((entity, idx) => {
-          const entityId = `entity_${b.id}_${idx}`;
+  // Extract concept nodes from bookmarks (always create, but mark as disabled if layer OFF)
+  bookmarks.forEach(b => {
+    if (b.concepts && Array.isArray(b.concepts)) {
+      b.concepts.forEach((concept, idx) => {
+        if (concept.relevance >= MIN_RELEVANCE) {
+          const conceptId = `concept_${b.id}_${idx}`;
           allNodes.push({
-            id: entityId,
-            type: 'entity',
-            title: entity.name,
-            entity_type: entity.type,
+            id: conceptId,
+            type: 'concept',
+            title: concept.name,
+            relevance: concept.relevance,
             parent: b.id,
-            value: 0.3,
+            value: 0.5,
             degree: 0,
             group: 999,
             summary: '',
             url: '',
-            reading_time: 0
+            reading_time: 0,
+            layerEnabled: layerToggles.concepts  // Track if layer is enabled
           });
-        });
-      }
-    });
-  }
+        }
+      });
+    }
+  });
   
-  // Extract keyword nodes from bookmarks
-  if (layerToggles.keywords) {
-    bookmarks.forEach(b => {
-      if (b.keywords && Array.isArray(b.keywords)) {
-        b.keywords.forEach((kw, idx) => {
-          if (kw.relevance >= MIN_RELEVANCE) {
-            const kwId = `keyword_${b.id}_${idx}`;
-            allNodes.push({
-              id: kwId,
-              type: 'keyword',
-              title: kw.word,
-              frequency: kw.frequency,
-              relevance: kw.relevance,
-              parent: b.id,
-              value: 0.2,
-              degree: 0,
-              group: 999,
-              summary: '',
-              url: '',
-              reading_time: 0
-            });
-          }
+  // Extract entity nodes from bookmarks (always create, but mark as disabled if layer OFF)
+  bookmarks.forEach(b => {
+    if (b.entities && Array.isArray(b.entities)) {
+      b.entities.forEach((entity, idx) => {
+        const entityId = `entity_${b.id}_${idx}`;
+        allNodes.push({
+          id: entityId,
+          type: 'entity',
+          title: entity.name,
+          entity_type: entity.type,
+          parent: b.id,
+          value: 0.3,
+          degree: 0,
+          group: 999,
+          summary: '',
+          url: '',
+          reading_time: 0,
+          layerEnabled: layerToggles.entities  // Track if layer is enabled
         });
-      }
-    });
-  }
+      });
+    }
+  });
+  
+  // Extract keyword nodes from bookmarks (always create, but mark as disabled if layer OFF)
+  bookmarks.forEach(b => {
+    if (b.keywords && Array.isArray(b.keywords)) {
+      b.keywords.forEach((kw, idx) => {
+        if (kw.relevance >= MIN_RELEVANCE) {
+          const kwId = `keyword_${b.id}_${idx}`;
+          allNodes.push({
+            id: kwId,
+            type: 'keyword',
+            title: kw.word,
+            frequency: kw.frequency,
+            relevance: kw.relevance,
+            parent: b.id,
+            value: 0.2,
+            degree: 0,
+            group: 999,
+            summary: '',
+            url: '',
+            reading_time: 0,
+            layerEnabled: layerToggles.keywords  // Track if layer is enabled
+          });
+        }
+      });
+    }
+  });
 
   // NEW in v5: Build edges between bookmarks and their metadata nodes
   const allEdges = [...edges];
@@ -946,6 +943,10 @@ function createD3Chart(data, allNodes) {
   }
 
   function getNodeColor(d) {
+    // If layer is disabled, render as gray
+    if (d.layerEnabled === false) {
+      return '#d0d0d0';
+    }
     return LAYER_COLORS[d.type] || COMMUNITY_COLORS[d.group % COMMUNITY_COLORS.length];
   }
 
@@ -1643,95 +1644,7 @@ document.getElementById('panel-delete').addEventListener('click', async () => {
 });
 
 // ── AI Batch ───────────────────────────────────────────────────────────────────
-document.getElementById('btn-ai-batch').addEventListener('click', async () => {
-  const settings = await getSettings();
-  if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
-    showToast('⚠️ AI not configured. Go to Settings first.');
-    return;
-  }
-
-  const allVisible = getFiltered(); // nodes currently visible
-  if (allVisible.length === 0) { showToast('⚠️ No nodes to process.'); return; }
-
-  // Only process nodes without a summary
-  const targets = allVisible.filter(b => !b.summary);
-  const alreadyDone = allVisible.length - targets.length;
-
-  if (targets.length === 0) {
-    showToast('✅ All ' + allVisible.length + ' visible nodes already have a summary!');
-    return;
-  }
-
-  let msg = 'AI will process ' + targets.length + ' node' + (targets.length > 1 ? 's' : '') + ' (no summary yet).';
-  if (alreadyDone > 0) msg += '\n' + alreadyDone + ' already have a summary and will be skipped.';
-  if (!confirm(msg)) return;
-
-  // Show notify
-  const notify = document.getElementById('ai-batch-notify');
-  const bar    = document.getElementById('ai-batch-bar');
-  const sub    = document.getElementById('ai-batch-sub');
-  notify.classList.remove('hidden');
-  notify.querySelector('.notify-title').textContent = '✨ AI processing…';
-  bar.style.width = '0%';
-  sub.textContent = '0 / ' + targets.length + ' done';
-
-  document.getElementById('btn-ai-batch').disabled = true;
-
-  let done = 0;
-  let failed = 0;
-
-  for (const b of targets) {
-    // Build aiText from saved pageMeta
-    const meta = b.pageMeta || {};
-    const parts = [];
-    if (meta.ogTitle && meta.ogTitle !== b.title) parts.push('Title: ' + meta.ogTitle);
-    if (meta.description) parts.push('Description: ' + meta.description);
-    if (meta.keywords) parts.push('Keywords: ' + meta.keywords);
-    if (meta.ogType) parts.push('Type: ' + meta.ogType);
-    if (meta.author) parts.push('Author: ' + meta.author);
-    if (meta.siteName) parts.push('Site: ' + meta.siteName);
-    const aiText = parts.join('\n');
-
-    try {
-      const result = await callAI(b.title, b.url, aiText);
-      if (result) {
-        const changes = {};
-        if (settings.featTags && result.tags?.length) {
-          changes.tags = [...new Set([...result.tags, ...(b.tags || [])])].slice(0, 8);
-        }
-        if (settings.featSummary && result.summary) {
-          changes.summary = result.summary;
-        }
-        if (Object.keys(changes).length) {
-          await updateBookmark(b.id, changes);
-          // Update local state immediately so color updates on re-render
-          const local = allBookmarks.find(x => x.id === b.id);
-          if (local) Object.assign(local, changes);
-        }
-      }
-    } catch (e) {
-      failed++;
-    }
-
-    done++;
-    const pct = Math.round((done / targets.length) * 100);
-    bar.style.width = pct + '%';
-    sub.textContent = done + ' / ' + targets.length + ' done' + (failed ? ' (' + failed + ' failed)' : '');
-
-    // Re-render after each node so color updates live
-    renderAll();
-  }
-
-  document.getElementById('btn-ai-batch').disabled = false;
-
-  // Done state
-  notify.querySelector('.notify-title').textContent = '✅ AI batch complete';
-  sub.textContent = (done - failed) + ' processed' + (failed ? ', ' + failed + ' failed' : '');
-  allBookmarks = await getBookmarks();
-  renderAll();
-
-  setTimeout(() => notify.classList.add('hidden'), 4000);
-});
+// REMOVED: btn-ai-batch listener (merged with Extract All functionality)
 
 // ── Delete all ─────────────────────────────────────────────────────────────────
 document.getElementById('btn-delete-all').addEventListener('click', async () => {
@@ -1755,6 +1668,45 @@ function showToast(msg) {
 
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Layer Toggle Handlers (NEW in v5.1: Sidebar integration) ──────────────────
+document.getElementById('layer-concepts-toggle').addEventListener('change', (e) => {
+  layerToggles.concepts = e.target.checked;
+  localStorage.setItem('layer_concepts', layerToggles.concepts);
+  renderAll();
+});
+
+document.getElementById('layer-entities-toggle').addEventListener('change', (e) => {
+  layerToggles.entities = e.target.checked;
+  localStorage.setItem('layer_entities', layerToggles.entities);
+  renderAll();
+});
+
+document.getElementById('layer-keywords-toggle').addEventListener('change', (e) => {
+  layerToggles.keywords = e.target.checked;
+  localStorage.setItem('layer_keywords', layerToggles.keywords);
+  renderAll();
+});
+
+// ── Collapsible Layers Section ─────────────────────────────────────────────────
+document.getElementById('layers-toggle').addEventListener('click', () => {
+  const content = document.getElementById('layers-content');
+  const isHidden = content.style.display === 'none';
+  content.style.display = isHidden ? 'block' : 'none';
+  const arrow = document.querySelector('#layers-toggle span');
+  if (arrow) {
+    arrow.textContent = isHidden ? '▼' : '▶';
+  }
+  localStorage.setItem('layers-collapsed', isHidden ? 'false' : 'true');
+});
+
+// ── Restore Layers collapsed state on page load ──────────────────────────────────
+const layersCollapsed = localStorage.getItem('layers-collapsed') === 'true';
+if (layersCollapsed) {
+  document.getElementById('layers-content').style.display = 'none';
+  const arrow = document.querySelector('#layers-toggle span');
+  if (arrow) arrow.textContent = '▶';
 }
 
 // Init — default graph view
