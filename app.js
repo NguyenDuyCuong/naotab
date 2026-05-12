@@ -816,11 +816,19 @@ function renderGraph(bookmarks) {
   // Build edges and compute metrics for bookmarks only
   const edges = buildEdgesFromTags(bookmarks);
   const { nodes: metricNodes } = computeNodeMetrics(bookmarks, edges);
+  // Normalize bookmark graph node type.
+  // Note: bookmark records already have domain "type" (source/entity/...) from schema.
+  // For graph rendering, we must keep bookmark nodes as type='bookmark'.
+  const bookmarkNodes = metricNodes.map(n => ({
+    ...n,
+    bookmark_type: n.type || 'unknown',
+    type: 'bookmark'
+  }));
 
   // NEW in v5: Build multi-layer nodes (concepts, entities, keywords)
-  const allNodes = [...metricNodes]; // Start with bookmark nodes
+  const allNodes = [...bookmarkNodes]; // Start with normalized bookmark nodes
   const nodeMap = {};
-  metricNodes.forEach(n => { nodeMap[n.id] = n; });
+  bookmarkNodes.forEach(n => { nodeMap[n.id] = n; });
   
   // Extract concept nodes from bookmarks (always create, but mark as disabled if layer OFF)
   bookmarks.forEach(b => {
@@ -925,8 +933,10 @@ function renderGraph(bookmarks) {
   // Prepare D3 data format (using deduplicated nodes)
   const data = {
     nodes: dedupAllNodes.map(n => ({
+      ...n,
       id: n.id,
-      type: n.type || 'bookmark',
+      // Ensure graph type remains in the supported set
+      type: (n.type === 'concept' || n.type === 'entity' || n.type === 'keyword') ? n.type : 'bookmark',
       group: n.group,
       value: n.value,
       degree: n.degree,
@@ -935,8 +945,7 @@ function renderGraph(bookmarks) {
       summary: n.summary || '',
       url: n.url || '',
       reading_time: n.reading_time || 5,
-      relevance: n.relevance || 1,
-      ...n
+      relevance: n.relevance || 1
     })),
     links: dedupAllEdges.map(e => ({
       source: e.source || e.from,
