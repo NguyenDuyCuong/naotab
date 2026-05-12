@@ -1006,10 +1006,24 @@ function createD3Chart(data, allNodes) {
 
   const links = data.links.map(d => ({...d}));
   const nodes = data.nodes.map(d => ({...d}));
+  
+  // Create a set of valid node IDs for fast lookup
+  const validNodeIds = new Set(nodes.map(n => n.id));
+  
+  // Filter links to only include those where both source and target exist
+  const validLinks = links.filter(link => {
+    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+    const isValid = validNodeIds.has(sourceId) && validNodeIds.has(targetId);
+    if (!isValid) {
+      console.warn(`Skipping orphaned link: ${sourceId} -> ${targetId}`);
+    }
+    return isValid;
+  });
 
   // D3 force simulation with initial tuning
   const simulation = d3.forceSimulation(nodes);
-  tuneForces(simulation, nodes.length, links.length, links);
+  tuneForces(simulation, nodes.length, validLinks.length, validLinks);
 
   const svg = d3.create("svg")
     .attr("width", width)
@@ -1031,7 +1045,7 @@ function createD3Chart(data, allNodes) {
   // Links - NEW in v5: Style by relationship type
   const link = g.append("g")
     .selectAll("line")
-    .data(links)
+    .data(validLinks)
     .join("line")
     .attr("stroke", d => {
       if (d.type === 'has_concept' || d.type === 'has_entity' || d.type === 'has_keyword') {
@@ -1130,7 +1144,7 @@ function createD3Chart(data, allNodes) {
   // NEW in v5: Node click handling for all node types (bookmarks, concepts, entities, keywords)
   node.on("click", (event, d) => {
     event.stopPropagation();
-    highlightNodeAndNeighbors(svg, d.id, links);
+    highlightNodeAndNeighbors(svg, d.id, validLinks);
     // Open panel for all types
     openNodePanel(d.id, d.type || 'bookmark');
   });
@@ -1181,7 +1195,7 @@ function createD3Chart(data, allNodes) {
     }
   });
 
-  currentNetwork = { simulation, svg, links, nodes, data, zoom, g, labels };
+  currentNetwork = { simulation, svg, validLinks, nodes, data, zoom, g, labels };
   return svg.node();
 }
 
@@ -2360,8 +2374,18 @@ document.getElementById('report-save').addEventListener('click', () => {
 });
 
 // Init — default graph view
-document.getElementById('list-view').style.display = 'none';
-document.getElementById('graph-view').style.display = 'block';
-document.getElementById('btn-graph-view').classList.add('active');
-document.getElementById('btn-list-view').classList.remove('active');
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('list-view').style.display = 'none';
+    document.getElementById('graph-view').style.display = 'block';
+    document.getElementById('btn-graph-view').classList.add('active');
+    document.getElementById('btn-list-view').classList.remove('active');
+    init();
+  });
+} else {
+  document.getElementById('list-view').style.display = 'none';
+  document.getElementById('graph-view').style.display = 'block';
+  document.getElementById('btn-graph-view').classList.add('active');
+  document.getElementById('btn-list-view').classList.remove('active');
+  init();
+}

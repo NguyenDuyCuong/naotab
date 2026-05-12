@@ -432,11 +432,29 @@
       align-items: center;
       justify-content: center;
     }
-    .modal-overlay {
-      position: absolute;
+    #export-modal .modal-overlay {
+      position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.4);
-      z-index: -1;
+      z-index: 1000;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 1000;
+    }
+    
+    #health-lint-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #health-lint-modal.hidden {
+      display: none;
     }
     .modal-content {
       position: relative;
@@ -1111,6 +1129,8 @@
 <script src="core/health.js"></script>
 <script src="core/lint.js"></script>
 <script src="app.js"></script>
+<script src="test_bug_fixes.js"></script>
+<script src="test_node_interactions.js"></script>
 <!-- Test suite - comment out after verification -->
 <!-- <script src="test_phase6a.js"></script> -->
 </body>
