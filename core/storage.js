@@ -11,6 +11,9 @@
 // Sync      → sync/*.js (future)
 
 const STORAGE_KEY  = 'tab_bookmarks';
+const STORAGE_MODE_KEY = 'tab_bookmarks_mode';
+const STORAGE_SHARD_META_KEY = 'tab_bookmarks_shard_meta';
+const STORAGE_SHARD_PREFIX = 'tab_bookmarks_shard_';
 const SETTINGS_KEY = 'tab_explorer_settings';
 const LEGACY_SETTINGS_KEYS = ['tab_settings', 'settings', 'bookmark-vault_settings'];
 
@@ -161,6 +164,79 @@ async function consumeLegacyIngestFailures(predicate) {
   return consumed;
 }
 
+function getShardKey(index) {
+  return `${STORAGE_SHARD_PREFIX}${index}`;
+}
+
+function chunkArray(items, chunkSize) {
+  const size = Math.max(1, Number(chunkSize || 500));
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function getShardedBookmarks() {
+  const metaResult = await chrome.storage.local.get(STORAGE_SHARD_META_KEY);
+  const meta = metaResult[STORAGE_SHARD_META_KEY];
+  if (!meta || !Number.isFinite(meta.totalShards) || meta.totalShards <= 0) {
+    return { bookmarks: [], meta: null };
+  }
+
+  const shardKeys = Array.from({ length: meta.totalShards }, (_, idx) => getShardKey(idx));
+  const shardResult = await chrome.storage.local.get(shardKeys);
+  const bookmarks = [];
+  shardKeys.forEach((key) => {
+    const shard = shardResult[key];
+    if (Array.isArray(shard)) bookmarks.push(...shard);
+  });
+  return { bookmarks, meta };
+}
+
+async function saveBookmarks(bookmarks) {
+  const settings = await getSettings();
+  const backend = settings.storageBackend || 'local-auto';
+  const shardSize = Math.max(100, Math.min(2000, Number(settings.storageShardSize || 500)));
+  const shardThreshold = Math.max(shardSize, Number(settings.storageShardThreshold || 1500));
+  const shouldUseShards = backend === 'local-sharded' || (backend === 'local-auto' && bookmarks.length >= shardThreshold);
+
+  if (!shouldUseShards) {
+    const metaResult = await chrome.storage.local.get(STORAGE_SHARD_META_KEY);
+    const meta = metaResult[STORAGE_SHARD_META_KEY];
+    const keysToRemove = [STORAGE_SHARD_META_KEY, STORAGE_MODE_KEY];
+    if (meta && Number.isFinite(meta.totalShards) && meta.totalShards > 0) {
+      for (let i = 0; i < meta.totalShards; i++) keysToRemove.push(getShardKey(i));
+    }
+    await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks });
+    await chrome.storage.local.remove(keysToRemove);
+    return;
+  }
+
+  const chunks = chunkArray(bookmarks, shardSize);
+  const payload = {
+    [STORAGE_MODE_KEY]: 'sharded',
+    [STORAGE_SHARD_META_KEY]: {
+      totalItems: bookmarks.length,
+      totalShards: chunks.length,
+      shardSize,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+  chunks.forEach((chunk, idx) => {
+    payload[getShardKey(idx)] = chunk;
+  });
+
+  const prevMetaResult = await chrome.storage.local.get(STORAGE_SHARD_META_KEY);
+  const prevMeta = prevMetaResult[STORAGE_SHARD_META_KEY];
+  const keysToRemove = [STORAGE_KEY];
+  if (prevMeta && Number.isFinite(prevMeta.totalShards) && prevMeta.totalShards > chunks.length) {
+    for (let i = chunks.length; i < prevMeta.totalShards; i++) keysToRemove.push(getShardKey(i));
+  }
+  await chrome.storage.local.set(payload);
+  if (keysToRemove.length > 0) await chrome.storage.local.remove(keysToRemove);
+}
+
 // ─── Bookmarks CRUD ────────────────────────────────────────────────────────────
 
 /**
@@ -168,6 +244,10 @@ async function consumeLegacyIngestFailures(predicate) {
  * Reads all bookmarks and runs migration on each — safe for old data.
  */
 async function getBookmarks() {
+  const sharded = await getShardedBookmarks();
+  if (sharded.meta) {
+    return (sharded.bookmarks || []).map(migrateBookmark);
+  }
   const result = await chrome.storage.local.get(STORAGE_KEY);
   return (result[STORAGE_KEY] || []).map(migrateBookmark);
 }
@@ -184,7 +264,7 @@ async function saveBookmark(fields) {
 
   const bookmark = createBookmark(fields);
   bookmarks.unshift(bookmark);
-  await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks });
+  await saveBookmarks(bookmarks);
   return { duplicate: false, bookmark };
 }
 
@@ -197,7 +277,7 @@ async function updateBookmark(id, changes) {
   const idx = bookmarks.findIndex(b => b.id === id);
   if (idx === -1) return false;
   bookmarks[idx] = { ...bookmarks[idx], ...changes, updatedAt: new Date().toISOString() };
-  await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks });
+  await saveBookmarks(bookmarks);
   return true;
 }
 
@@ -206,7 +286,7 @@ async function updateBookmark(id, changes) {
  */
 async function deleteBookmark(id) {
   const bookmarks = await getBookmarks();
-  await chrome.storage.local.set({ [STORAGE_KEY]: bookmarks.filter(b => b.id !== id) });
+  await saveBookmarks(bookmarks.filter(b => b.id !== id));
 }
 
 /**
@@ -215,7 +295,7 @@ async function deleteBookmark(id) {
  */
 async function replaceAllBookmarks(bookmarks) {
   const safe = (Array.isArray(bookmarks) ? bookmarks : []).map(migrateBookmark);
-  await chrome.storage.local.set({ [STORAGE_KEY]: safe });
+  await saveBookmarks(safe);
   return safe.length;
 }
 
@@ -230,6 +310,10 @@ async function mergeBookmarks(bookmarks) {
   const existingUrls = new Set(existing.map(b => b.url));
   const newOnes = incoming.filter(b => !existingUrls.has(b.url));
   const merged = [...newOnes, ...existing];
-  await chrome.storage.local.set({ [STORAGE_KEY]: merged });
+  await saveBookmarks(merged);
   return { imported: newOnes.length, skipped: incoming.length - newOnes.length, total: merged.length };
+}
+
+async function clearAllBookmarks() {
+  await saveBookmarks([]);
 }

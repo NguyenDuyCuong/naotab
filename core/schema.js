@@ -124,6 +124,9 @@ const SETTINGS_DEFAULTS = {
   graphQualityMode: 'auto',
   graphMaxNodesPerLevel: 1200,
   graphMaxEdgesPerLevel: 4000,
+  storageBackend: 'local-auto', // local-auto|local-legacy|local-sharded
+  storageShardSize: 500,
+  storageShardThreshold: 1500,
 };
 
 /**

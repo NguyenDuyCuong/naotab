@@ -18,12 +18,8 @@ async function exportJSON() {
 async function importJSON(jsonString) {
   const data = JSON.parse(jsonString);
   const incoming = (data.bookmarks || data).map(migrateBookmark); // migrate on import
-  const existing = await getBookmarks();
-  const existingUrls = new Set(existing.map(b => b.url));
-  const newOnes = incoming.filter(b => !existingUrls.has(b.url));
-  const merged = [...newOnes, ...existing];
-  await chrome.storage.local.set({ [STORAGE_KEY]: merged });
-  return { imported: newOnes.length, skipped: incoming.length - newOnes.length };
+  const result = await mergeBookmarks(incoming);
+  return { imported: result.imported, skipped: result.skipped };
 }
 
 /**

@@ -545,6 +545,15 @@ async function loadSettings() {
     30000,
     4000
   ));
+  document.getElementById('storage-backend').value = ['local-auto', 'local-legacy', 'local-sharded'].includes(settings.storageBackend)
+    ? settings.storageBackend
+    : 'local-auto';
+  document.getElementById('storage-shard-size').value = String(clampInt(
+    settings.storageShardSize,
+    100,
+    2000,
+    500
+  ));
 
   const currentUrl = settings.aiBaseUrl || '';
   document.querySelectorAll('.preset-btn').forEach(btn => {
@@ -638,6 +647,10 @@ function bindEvents() {
       : 'auto';
     const graphMaxNodesPerLevel = clampInt(document.getElementById('graph-max-nodes').value, 100, 10000, 1200);
     const graphMaxEdgesPerLevel = clampInt(document.getElementById('graph-max-edges').value, 500, 30000, 4000);
+    const storageBackend = ['local-auto', 'local-legacy', 'local-sharded'].includes(document.getElementById('storage-backend').value)
+      ? document.getElementById('storage-backend').value
+      : 'local-auto';
+    const storageShardSize = clampInt(document.getElementById('storage-shard-size').value, 100, 2000, 500);
 
     const newSettings = {
       ...settings,
@@ -657,6 +670,8 @@ function bindEvents() {
       graphQualityMode,
       graphMaxNodesPerLevel,
       graphMaxEdgesPerLevel,
+      storageBackend,
+      storageShardSize,
       ...collectLegacyIngestSettingsFromUI(),
     };
     await saveSettings(newSettings);

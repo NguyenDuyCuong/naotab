@@ -656,6 +656,20 @@
           <input type="number" id="graph-max-edges" min="500" max="30000" step="500" />
         </div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Storage backend</label>
+          <select id="storage-backend">
+            <option value="local-auto">Local Auto (recommended)</option>
+            <option value="local-legacy">Legacy single JSON</option>
+            <option value="local-sharded">Sharded JSON</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Shard size</label>
+          <input type="number" id="storage-shard-size" min="100" max="2000" step="50" />
+        </div>
+      </div>
       <div class="status-note">These limits apply to Overview/Neighborhood graph modes to keep interactions responsive.</div>
     </div>
   </div>

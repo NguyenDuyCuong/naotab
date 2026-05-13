@@ -939,6 +939,125 @@ function pruneEdgesByBudget(edges, maxEdges) {
   return sorted.slice(0, maxEdges);
 }
 
+function getPrimaryClusterKey(bookmark) {
+  const tags = Array.isArray(bookmark.tags) ? bookmark.tags.filter(Boolean) : [];
+  const preferredTag = tags.find(t => !excludedTags.has(t));
+  if (preferredTag) return { key: `tag:${preferredTag}`, label: preferredTag, tag: preferredTag, kind: 'tag' };
+  try {
+    const host = new URL(bookmark.url).hostname.replace(/^www\./, '');
+    if (host) return { key: `domain:${host}`, label: host, tag: '', kind: 'domain' };
+  } catch (_) {
+    // no-op
+  }
+  return { key: 'misc:untagged', label: 'untagged', tag: '', kind: 'misc' };
+}
+
+function buildOverviewGraphData(bookmarks, budget) {
+  const selected = capBookmarksForGraph(bookmarks, budget.maxNodes * 2);
+  const clusterMap = new Map();
+  const bookmarkToCluster = new Map();
+
+  selected.forEach((b) => {
+    const cluster = getPrimaryClusterKey(b);
+    if (!clusterMap.has(cluster.key)) {
+      clusterMap.set(cluster.key, {
+        id: `cluster_${cluster.key.replace(/[^a-zA-Z0-9:_-]/g, '_')}`,
+        type: 'cluster',
+        title: cluster.label,
+        clusterTag: cluster.tag,
+        clusterKind: cluster.kind,
+        memberCount: 0,
+        degree: 0,
+        value: 1,
+        summary: '',
+        url: '',
+        reading_time: 8,
+      });
+    }
+    const node = clusterMap.get(cluster.key);
+    node.memberCount += 1;
+    node.value = Math.max(1, node.memberCount);
+    bookmarkToCluster.set(b.id, node.id);
+  });
+
+  const rawEdges = buildEdgesFromTags(selected);
+  const interCluster = new Map();
+  rawEdges.forEach((e) => {
+    const a = bookmarkToCluster.get(e.from);
+    const b = bookmarkToCluster.get(e.to);
+    if (!a || !b || a === b) return;
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+    const item = interCluster.get(key) || { source: a, target: b, weight: 0, confidence: 0.4, type: 'cluster' };
+    item.weight += (e.weight || 1);
+    item.confidence = Math.min(1, 0.25 + item.weight / 8);
+    interCluster.set(key, item);
+  });
+
+  const nodes = Array.from(clusterMap.values())
+    .sort((a, b) => b.memberCount - a.memberCount)
+    .slice(0, Math.max(30, Math.floor(budget.maxNodes * 0.65)));
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const links = pruneEdgesByBudget(
+    Array.from(interCluster.values()).filter(e => nodeIds.has(e.source) && nodeIds.has(e.target)),
+    Math.max(80, Math.floor(budget.maxEdges * 0.5))
+  );
+  return { nodes, links };
+}
+
+function buildNeighborhoodScope(bookmarks, budget) {
+  const selected = capBookmarksForGraph(bookmarks, budget.maxNodes * 2);
+  if (selected.length <= budget.maxNodes) return selected;
+  const edges = buildEdgesFromTags(selected);
+
+  let centerId = panelId && selected.some(b => String(b.id) === String(panelId))
+    ? String(panelId)
+    : String(selected[0]?.id || '');
+  if (!centerId) return selected.slice(0, budget.maxNodes);
+
+  const adjacency = new Map();
+  edges.forEach((e) => {
+    const a = String(e.from);
+    const b = String(e.to);
+    const w = Number(e.weight || 1);
+    if (!adjacency.has(a)) adjacency.set(a, []);
+    if (!adjacency.has(b)) adjacency.set(b, []);
+    adjacency.get(a).push({ id: b, w });
+    adjacency.get(b).push({ id: a, w });
+  });
+
+  const picked = new Set([centerId]);
+  const neighbors = (adjacency.get(centerId) || []).sort((x, y) => y.w - x.w);
+  for (let i = 0; i < neighbors.length && picked.size < budget.maxNodes; i++) picked.add(neighbors[i].id);
+
+  // Fill remaining slots with high-degree nodes from current adjacency scope
+  if (picked.size < budget.maxNodes) {
+    const degreeRank = selected
+      .map(b => ({ id: String(b.id), degree: (adjacency.get(String(b.id)) || []).length }))
+      .sort((a, b) => b.degree - a.degree);
+    degreeRank.forEach((entry) => {
+      if (picked.size >= budget.maxNodes) return;
+      picked.add(entry.id);
+    });
+  }
+
+  return selected.filter(b => picked.has(String(b.id)));
+}
+
+function buildEvidenceScope(bookmarks, budget) {
+  const scored = bookmarks
+    .map((b) => ({
+      bookmark: b,
+      score:
+        (b.summary ? 4 : 0) +
+        (Array.isArray(b.concepts) ? b.concepts.length : 0) * 2 +
+        (Array.isArray(b.entities) ? b.entities.length : 0) +
+        (Array.isArray(b.keywords) ? b.keywords.length : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  const selected = scored.slice(0, budget.maxNodes).map(x => x.bookmark);
+  return selected.length > 0 ? selected : capBookmarksForGraph(bookmarks, budget.maxNodes);
+}
+
 // ── Graph view (D3.js) ─────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   if (bookmarks.length === 0) return;
@@ -947,7 +1066,26 @@ function renderGraph(bookmarks) {
   if (!container) return;
 
   const budget = getGraphRenderBudget(currentGraphLevel);
-  const selectedBookmarks = capBookmarksForGraph(bookmarks, budget.maxNodes);
+  if (currentGraphLevel === 'overview') {
+    const overview = buildOverviewGraphData(bookmarks, budget);
+    const chart = createD3Chart({
+      nodes: overview.nodes,
+      links: overview.links.map(e => ({
+        source: e.source,
+        target: e.target,
+        value: e.confidence || 0.4,
+        type: 'cluster',
+      })),
+    }, overview.nodes, budget);
+    container.innerHTML = '';
+    container.appendChild(chart);
+    return;
+  }
+
+  const scopedBookmarks = currentGraphLevel === 'neighborhood'
+    ? buildNeighborhoodScope(bookmarks, budget)
+    : buildEvidenceScope(bookmarks, budget);
+  const selectedBookmarks = capBookmarksForGraph(scopedBookmarks, budget.maxNodes);
 
   // Build edges and compute metrics for bookmarks only
   const rawEdges = buildEdgesFromTags(selectedBookmarks);
@@ -1235,6 +1373,7 @@ function createD3Chart(data, allNodes, budget = {}) {
     if (d.type === 'concept') return 5; // Medium
     if (d.type === 'entity') return 3; // Small
     if (d.type === 'keyword') return 2; // Tiny
+    if (d.type === 'cluster') return 7 + Math.min(18, Math.sqrt(d.memberCount || d.value || 1));
     return 3;
   }
 
@@ -1242,6 +1381,11 @@ function createD3Chart(data, allNodes, budget = {}) {
     // If layer is disabled, render as gray
     if (d.layerEnabled === false) {
       return '#d0d0d0';
+    }
+    if (d.type === 'cluster') {
+      if (d.clusterKind === 'tag') return '#4338ca';
+      if (d.clusterKind === 'domain') return '#0f766e';
+      return '#6b7280';
     }
     return LAYER_COLORS[d.type] || COMMUNITY_COLORS[d.group % COMMUNITY_COLORS.length];
   }
@@ -1307,7 +1451,20 @@ function createD3Chart(data, allNodes, budget = {}) {
   node.on("click", (event, d) => {
     event.stopPropagation();
     highlightNodeAndNeighbors(svg, d.id, validLinks);
-    // Open panel for all types
+    if (d.type === 'cluster') {
+      if (d.clusterTag) {
+        activeTag = activeTag === d.clusterTag ? null : d.clusterTag;
+        setViewMode('list');
+        showToast(activeTag ? `🎯 Scoped to tag: ${activeTag}` : '🔎 Cleared cluster scope');
+      } else {
+        searchQuery = d.title || '';
+        document.getElementById('search-input').value = searchQuery;
+        setViewMode('list');
+        showToast(`🔎 Scoped to cluster: ${d.title}`);
+      }
+      return;
+    }
+    // Open panel for bookmark/metadata nodes
     openNodePanel(d.id, d.type || 'bookmark');
   });
 
@@ -2712,7 +2869,11 @@ document.getElementById('btn-delete-all').addEventListener('click', async () => 
   if (allBookmarks.length === 0) { showToast('⚠️ No bookmarks yet!'); return; }
   const approved = await showDeleteAllModal(allBookmarks.length);
   if (!approved) return;
-  await chrome.storage.local.remove('tab_bookmarks');
+  if (typeof clearAllBookmarks === 'function') {
+    await clearAllBookmarks();
+  } else {
+    await chrome.storage.local.remove('tab_bookmarks');
+  }
   allBookmarks = [];
   closeNodePanel();
   renderAll();
