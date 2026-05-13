@@ -8,6 +8,7 @@ let currentGraphLevel = 'overview'; // overview|neighborhood|evidence
 let editingId = null;
 let panelId = null; // id bookmark đang hiển thị trong panel
 let panelNodeType = 'bookmark';
+let overviewClusterMembers = new Map(); // clusterNodeId → [bookmark, ...]
 let panelDirty = false;
 let currentNetwork = null; // D3 graph instance (simulation, svg, links, nodes)
 let runtimeSettings = {
@@ -980,6 +981,15 @@ function buildOverviewGraphData(bookmarks, budget) {
     bookmarkToCluster.set(b.id, node.id);
   });
 
+  // Build reverse map: clusterNodeId → [bookmarks] for cluster detail panel
+  overviewClusterMembers = new Map();
+  selected.forEach((b) => {
+    const clusterId = bookmarkToCluster.get(b.id);
+    if (!clusterId) return;
+    if (!overviewClusterMembers.has(clusterId)) overviewClusterMembers.set(clusterId, []);
+    overviewClusterMembers.get(clusterId).push(b);
+  });
+
   const rawEdges = buildEdgesFromTags(selected);
   const interCluster = new Map();
   rawEdges.forEach((e) => {
@@ -996,6 +1006,16 @@ function buildOverviewGraphData(bookmarks, budget) {
   const nodes = Array.from(clusterMap.values())
     .sort((a, b) => b.memberCount - a.memberCount)
     .slice(0, Math.max(30, Math.floor(budget.maxNodes * 0.65)));
+
+  // Attach topMembers (up to 5) sorted: with summary first, then by savedAt desc
+  nodes.forEach(n => {
+    const members = overviewClusterMembers.get(n.id) || [];
+    const sorted = members.slice().sort((a, b) => {
+      if (!!a.summary !== !!b.summary) return a.summary ? -1 : 1;
+      return (b.savedAt || '') > (a.savedAt || '') ? 1 : -1;
+    });
+    n.topMembers = sorted.slice(0, 5);
+  });
   const nodeIds = new Set(nodes.map(n => n.id));
   const links = pruneEdgesByBudget(
     Array.from(interCluster.values()).filter(e => nodeIds.has(e.source) && nodeIds.has(e.target)),
@@ -1275,9 +1295,12 @@ function tuneForces(simulation, nodeCount, edgeCount, links) {
   const linkDistance = edgeRatio > 2 ? 40 : 50;
   const centerStrength = edgeCount > nodeCount * 1.5 ? 0.08 : 0.05;
 
+  const chargeForce = d3.forceManyBody().strength(chargeStrength);
+  if (nodeCount > 50) chargeForce.theta(0.9); // Barnes-Hut approximation for larger graphs
+
   simulation
     .force("link", d3.forceLink(links).id(d => d.id).distance(linkDistance))
-    .force("charge", d3.forceManyBody().strength(chargeStrength))
+    .force("charge", chargeForce)
     .force("collide", d3.forceCollide(d => 3 + (d.reading_time || 5) / 2 + 3))
     .force("x", d3.forceX(0).strength(centerStrength))
     .force("y", d3.forceY(0).strength(centerStrength));
@@ -1290,7 +1313,8 @@ function createD3Chart(data, allNodes, budget = {}) {
 
   const links = data.links.map(d => ({...d}));
   const nodes = data.nodes.map(d => ({...d}));
-  
+  const nodeCount = nodes.length;
+
   // Normalize by string key to avoid number/string ID mismatches
   const canonicalNodeIdByKey = new Map(nodes.map(n => [String(n.id), n.id]));
   
@@ -1323,7 +1347,10 @@ function createD3Chart(data, allNodes, budget = {}) {
 
   // D3 force simulation with initial tuning
   const simulation = d3.forceSimulation(nodes);
-  tuneForces(simulation, nodes.length, validLinks.length, validLinks);
+  tuneForces(simulation, nodeCount, validLinks.length, validLinks);
+  const alphaDecay = nodeCount > 300 ? 0.04 : (nodeCount > 100 ? 0.028 : 0.02);
+  const velocityDecay = nodeCount > 300 ? 0.5 : 0.4;
+  simulation.alphaDecay(alphaDecay).velocityDecay(velocityDecay);
 
   const svg = d3.create("svg")
     .attr("width", width)
@@ -1401,6 +1428,10 @@ function createD3Chart(data, allNodes, budget = {}) {
     .attr("fill", getNodeColor)
     .style("cursor", "pointer");
 
+  if (nodeCount > 200) {
+    node.style('transition', 'none');
+  }
+
   // Node tooltips
   node.append("title")
     .text(d => d.title || d.id);
@@ -1452,16 +1483,7 @@ function createD3Chart(data, allNodes, budget = {}) {
     event.stopPropagation();
     highlightNodeAndNeighbors(svg, d.id, validLinks);
     if (d.type === 'cluster') {
-      if (d.clusterTag) {
-        activeTag = activeTag === d.clusterTag ? null : d.clusterTag;
-        setViewMode('list');
-        showToast(activeTag ? `🎯 Scoped to tag: ${activeTag}` : '🔎 Cleared cluster scope');
-      } else {
-        searchQuery = d.title || '';
-        document.getElementById('search-input').value = searchQuery;
-        setViewMode('list');
-        showToast(`🔎 Scoped to cluster: ${d.title}`);
-      }
+      openClusterPanel(d);
       return;
     }
     // Open panel for bookmark/metadata nodes
@@ -1474,34 +1496,42 @@ function createD3Chart(data, allNodes, budget = {}) {
     closeNodePanel();
   });
 
-  // Double-click node: open URL (bookmarks only)
+  // Double-click node: scope cluster to list, or open URL for bookmarks
   node.on("dblclick", (event, d) => {
+    event.stopPropagation();
+    if (d.type === 'cluster') {
+      scopeClusterToList(d);
+      return;
+    }
     if (d.type === 'bookmark' && d.url) window.open(d.url, '_blank');
   });
 
   // Track tick count for fit-to-bounds (TODO 3)
   let tickCount = 0;
-  const maxTicks = budget.hideLabels ? 200 : 300;
+  const maxTicks = currentGraphLevel === 'overview' ? 150 : (nodeCount > 400 ? 200 : (nodeCount <= 100 ? 400 : 300));
   let fitApplied = false;
 
   // Simulation tick
   simulation.on("tick", () => {
-    link
-      .attr("x1", d => d.source.x)
-      .attr("y1", d => d.source.y)
-      .attr("x2", d => d.target.x)
-      .attr("y2", d => d.target.y);
+    tickCount++;
+    const skipFrame = nodeCount > 400 && tickCount % 3 !== 0;
+    if (!skipFrame) {
+      link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
 
-    node
-      .attr("cx", d => d.x)
-      .attr("cy", d => d.y);
+      node
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y);
 
-    labels
-      .attr("x", d => d.x)
-      .attr("y", d => d.y + 3 + getNodeRadius(d) + 10);
+      labels
+        .attr("x", d => d.x)
+        .attr("y", d => d.y + 3 + getNodeRadius(d) + 10);
+    }
 
     // Apply fit-to-bounds when simulation stabilizes
-    tickCount++;
     if (!fitApplied && (simulation.alpha() < 0.01 || tickCount >= maxTicks)) {
       fitApplied = true;
       const fitTransform = computeFitTransform(nodes, width, height, 0.85);
@@ -1511,6 +1541,7 @@ function createD3Chart(data, allNodes, budget = {}) {
       svg.transition()
         .duration(budget.hideLabels ? 280 : 500)
         .call(zoom.transform, t);
+      simulation.stop();
     }
   });
 
@@ -2189,6 +2220,16 @@ function openBookmarkPanel(bookmarkId) {
   const b = findBookmarkById(bookmarkId);
   if (!b) return false;
 
+  // Restore any fields hidden by cluster panel
+  const summaryField = document.getElementById('panel-summary').closest('.panel-field');
+  const reasonField = document.getElementById('panel-reason') && document.getElementById('panel-reason').closest('.panel-field');
+  const tagsField = document.getElementById('panel-tags').closest('.panel-field');
+  if (summaryField) summaryField.style.display = '';
+  if (reasonField) reasonField.style.display = '';
+  if (tagsField) tagsField.style.display = '';
+  // Restore panel-ai-row visibility immediately; async settings check below will hide if AI disabled
+  document.getElementById('panel-ai-row').classList.remove('hidden');
+
   const faviconEl = document.getElementById('panel-favicon');
   if (b.favIconUrl && b.favIconUrl.startsWith('http')) {
     faviconEl.innerHTML = '<img src="' + escapeHtml(b.favIconUrl) + '" onerror="this.textContent=\'🌐\'" />';
@@ -2654,6 +2695,110 @@ function openEntityPanel(entityId) {
     connectedEl.innerHTML = '';
   }
   return true;
+}
+
+/**
+ * scopeClusterToList(clusterData)
+ * Scope the list view to bookmarks in this cluster (tag or search query).
+ */
+function scopeClusterToList(clusterData) {
+  if (clusterData.clusterTag) {
+    activeTag = activeTag === clusterData.clusterTag ? null : clusterData.clusterTag;
+    setViewMode('list');
+    showToast(activeTag ? '🎯 Scoped to tag: ' + activeTag : '🔎 Cleared cluster scope');
+  } else {
+    searchQuery = clusterData.title || '';
+    document.getElementById('search-input').value = searchQuery;
+    setViewMode('list');
+    showToast('🔎 Scoped to cluster: ' + clusterData.title);
+  }
+}
+
+/**
+ * openClusterPanel(clusterData)
+ * Show cluster details in the right-side node panel instead of immediately scoping to list view.
+ */
+function openClusterPanel(clusterData) {
+  const bookmarkSection = document.getElementById('panel-bookmark-section');
+  const conceptSection = document.getElementById('panel-concept-section');
+  const entitySection = document.getElementById('panel-entity-section');
+  bookmarkSection.classList.remove('hidden');
+  conceptSection.classList.add('hidden');
+  entitySection.classList.add('hidden');
+
+  const kindEmoji = clusterData.clusterKind === 'tag' ? '📌'
+    : clusterData.clusterKind === 'domain' ? '🌐' : '📦';
+
+  const faviconEl = document.getElementById('panel-favicon');
+  faviconEl.innerHTML = kindEmoji;
+
+  document.getElementById('panel-title').textContent = clusterData.title;
+  document.getElementById('panel-url').textContent = 'cluster of ' + clusterData.memberCount + ' pages';
+
+  const badgesEl = document.getElementById('panel-badges');
+  if (badgesEl) {
+    badgesEl.innerHTML =
+      '<span style="background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 6px;font-size:11px;margin-right:4px">' +
+      kindEmoji + ' ' + escapeHtml(clusterData.clusterKind || 'other') + '</span>' +
+      '<span style="background:#f0fdf4;color:#15803d;border-radius:4px;padding:1px 6px;font-size:11px">' +
+      clusterData.memberCount + ' pages</span>';
+  }
+
+  // Hide AI row and editable fields
+  document.getElementById('panel-ai-row').classList.add('hidden');
+  const summaryField = document.getElementById('panel-summary').closest('.panel-field');
+  const reasonField = document.getElementById('panel-reason') && document.getElementById('panel-reason').closest('.panel-field');
+  const tagsField = document.getElementById('panel-tags').closest('.panel-field');
+  if (summaryField) summaryField.style.display = 'none';
+  if (reasonField) reasonField.style.display = 'none';
+  if (tagsField) tagsField.style.display = 'none';
+
+  // Build representative pages list in panel-connected
+  const connectedEl = document.getElementById('panel-connected');
+  const topMembers = clusterData.topMembers || [];
+  let html = '<div class="panel-connected-label">📑 Representative pages</div>';
+  if (topMembers.length === 0) {
+    html += '<div style="color:#999;font-size:12px;padding:4px 0">No pages found</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">';
+    topMembers.forEach(function(b) {
+      const favicon = b.favIconUrl && b.favIconUrl.startsWith('http')
+        ? '<img src="' + escapeHtml(b.favIconUrl) + '" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;border-radius:2px" onerror="this.style.display=\'none\'" />'
+        : '<span style="margin-right:4px">🌐</span>';
+      const snippet = b.summary
+        ? '<div style="color:#666;font-size:11px;margin-top:2px;line-height:1.4">' +
+          escapeHtml(b.summary.slice(0, 100)) + (b.summary.length > 100 ? '…' : '') + '</div>'
+        : '';
+      html += '<div style="border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;background:#fafafa">' +
+        '<div style="font-size:12px;font-weight:500;line-height:1.4">' + favicon +
+        '<a href="' + escapeHtml(b.url) + '" target="_blank" style="color:#1d4ed8;text-decoration:none" onclick="event.stopPropagation()">' +
+        escapeHtml(b.title || b.url) + '</a></div>' + snippet + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '<button id="cluster-browse-btn" style="margin-top:10px;width:100%;padding:6px 12px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">🔍 Browse cluster</button>';
+  connectedEl.innerHTML = html;
+
+  // Use onclick (not addEventListener) to avoid duplicate listeners on repeated opens
+  const browseBtn = document.getElementById('cluster-browse-btn');
+  if (browseBtn) {
+    browseBtn.onclick = function() { scopeClusterToList(clusterData); };
+  }
+
+  const panelMeta = document.getElementById('panel-meta');
+  const panelExtracted = document.getElementById('panel-extracted');
+  if (panelMeta) panelMeta.innerHTML = '';
+  if (panelExtracted) panelExtracted.innerHTML = '';
+
+  document.getElementById('panel-open-url').style.display = 'none';
+  document.getElementById('panel-delete').style.display = 'none';
+  document.getElementById('panel-save').style.display = 'none';
+
+  panelId = clusterData.id;
+  panelNodeType = 'cluster';
+  panelDirty = false;
+  document.getElementById('node-panel').classList.add('open');
+  updateSidebarNodeList();
 }
 
 function closeNodePanel() {
