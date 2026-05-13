@@ -25,6 +25,7 @@ A Chrome Extension (Manifest V3) that turns your browser tabs into an organized,
 - **Obsidian export** — ZIP of `.md` files with YAML frontmatter, ready to open as an Obsidian vault
 - **JSON export / import** — full backup and restore
 - **Google Drive backup (manual)** — backup to Drive `appDataFolder`, restore latest backup with safe merge or full replace
+- **Legacy Import (Bookmarks + History)** — bulk-ingest Chrome Bookmarks (recursive folders) and full History with pause/resume/cancel, progress, failure list, and retry-failed
 - **Connected nodes** — node panel shows all bookmarks linked to the selected node (within current filter), click to navigate between them
 - **Sidebar node list** — left sidebar split into Tags (top) + live node list (bottom), updates with filter/search in real time
 - **Hover tooltips** — hover any node or sidebar item to preview title + summary instantly
@@ -72,6 +73,15 @@ If AI is configured, the **✨ AI Suggest** button appears in the panel. It uses
 
 ### Settings
 Click **⚙️** → choose a provider preset → enter API key and model → **🧪 Test connection** → **💾 Save Settings**.
+
+### Legacy Import (Bookmarks + History)
+Open **Settings** → **Legacy Import** card:
+- Choose sources: Bookmarks and/or History
+- Choose strategy: Hybrid (fetch first + hidden-tab fallback), Fetch only, or Hidden-tab only
+- Configure skip-existing + retry count
+- Use **Start / Pause / Resume / Cancel**
+- Watch live counters + current URL + failures list
+- Click **Retry failed** after run if needed
 
 ### Google Drive backup setup
 1. Open `manifest.json`
@@ -132,6 +142,8 @@ AI is **off by default**. Offline keyword + domain-based tag suggestions always 
 | `unlimitedStorage` | Remove the default 10MB cap |
 | `scripting` + `host_permissions` | Read page meta tags on demand |
 | `identity` + `oauth2` | Authorize Google account for Drive `appDataFolder` backup |
+| `bookmarks` | Read full Chrome bookmark tree recursively for ingestion |
+| `history` | Read browser history for legacy import |
 
 ---
 
@@ -159,7 +171,7 @@ bookmark-vault/
 - [ ] Dark mode
 - [ ] Duplicate tab detector
 - [ ] AI-powered bookmark grouping
-- [ ] Browser history integration
+- [x] Browser history integration (legacy import)
 
 ---
 

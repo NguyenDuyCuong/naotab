@@ -164,10 +164,9 @@ Example: {"tags":["rust","performance","async"],"summary":"Deep dive into async 
  *          ai_extracted_fields, extraction_confidence, extraction_timestamp}
  * Uses helper functions from extraction.js; fallback if AI fails.
  */
-async function extractBookmarkMetadata(title, url, summary, pageMeta) {
-  const settings = await getSettings();
-  const extractedFields = [];
-  let confidence = 0;
+async function extractBookmarkMetadata(title, url, summary, pageMeta, options = {}) {
+  const strictAI = options?.strictAI === true;
+  const settings = options?.settingsOverride || await getSettings();
   
   // Fallback: use offline extraction helpers
   const offlineFallback = () => {
@@ -188,6 +187,11 @@ async function extractBookmarkMetadata(title, url, summary, pageMeta) {
   
   // If AI not enabled, use offline extraction
   if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
+    if (strictAI) {
+      const err = new Error('AI not configured');
+      err.code = 'ai-not-configured';
+      throw err;
+    }
     return offlineFallback();
   }
   
@@ -245,8 +249,17 @@ Return ONLY valid JSON, nothing else.`;
       body = { model: settings.aiModel, max_tokens: 512, messages: [{ role: 'user', content: prompt }] };
     }
 
-    const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), timeout: 30000 });
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = setTimeout(() => controller?.abort(), 30000);
+    const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal: controller?.signal });
+    clearTimeout(timeoutId);
     if (!res.ok) {
+      if (strictAI) {
+        const err = new Error(`API error ${res.status}`);
+        err.code = `http-${res.status}`;
+        err.status = res.status;
+        throw err;
+      }
       console.warn(`AI extraction failed (${res.status}), using fallback`);
       return offlineFallback();
     }
@@ -258,6 +271,11 @@ Return ONLY valid JSON, nothing else.`;
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      if (strictAI) {
+        const err = new Error('Invalid AI extraction response');
+        err.code = 'invalid-response';
+        throw err;
+      }
       console.warn('Invalid AI extraction response, using fallback');
       return offlineFallback();
     }
@@ -278,9 +296,244 @@ Return ONLY valid JSON, nothing else.`;
       extraction_timestamp: new Date().toISOString()
     };
   } catch (error) {
+    if (strictAI) throw error;
     console.warn('AI extraction error:', error.message);
     return offlineFallback();
   }
+}
+
+function detectAIProvider(settings = {}) {
+  const baseUrl = String(settings.aiBaseUrl || '').toLowerCase();
+  if (!baseUrl) return 'unknown';
+  if (baseUrl.includes('anthropic.com')) return 'anthropic';
+  if (baseUrl.includes('openrouter.ai')) return 'openrouter';
+  if (baseUrl.includes('groq.com')) return 'groq';
+  if (baseUrl.includes('localhost:11434') || baseUrl.includes('ollama')) return 'ollama';
+  if (baseUrl.includes('openai.com')) return 'openai';
+  return 'openai-compatible';
+}
+
+function getProviderRateCap(provider, settings = {}) {
+  const defaults = {
+    anthropic: 20,
+    openai: 40,
+    openrouter: 20,
+    groq: 45,
+    ollama: 120,
+    'openai-compatible': 30,
+    unknown: 20,
+  };
+  const configured = Number(settings.aiExtractRateCapPerMinute || 0);
+  if (configured > 0) return configured;
+  return defaults[provider] || defaults.unknown;
+}
+
+function classifyAIFailure(error, provider = 'unknown') {
+  const code = String(error?.code || error?.status || 'unknown');
+  const status = Number(error?.status || (String(code).startsWith('http-') ? Number(String(code).slice(5)) : NaN));
+  if (code === 'ai-not-configured') {
+    return { category: 'ai-failure', type: 'not-configured', code, retryable: false, provider };
+  }
+  if (code === 'AbortError' || code === 'timeout') {
+    return { category: 'ai-failure', type: 'timeout', code: 'timeout', retryable: true, provider };
+  }
+  if (status === 429) {
+    return { category: 'ai-failure', type: 'rate-limit', code: 'http-429', retryable: true, provider };
+  }
+  if (status >= 500) {
+    return { category: 'ai-failure', type: 'server', code: `http-${status}`, retryable: true, provider };
+  }
+  if (status === 401 || status === 403) {
+    return { category: 'ai-failure', type: 'auth', code: `http-${status}`, retryable: false, provider };
+  }
+  if (status >= 400 && status < 500) {
+    return { category: 'ai-failure', type: 'request', code: `http-${status}`, retryable: false, provider };
+  }
+  if (code === 'invalid-response') {
+    return { category: 'ai-failure', type: 'invalid-response', code, retryable: true, provider };
+  }
+  if (String(error?.message || '').toLowerCase().includes('network')) {
+    return { category: 'ai-failure', type: 'network', code: 'network', retryable: true, provider };
+  }
+  return { category: 'ai-failure', type: 'unknown', code, retryable: true, provider };
+}
+
+function toRetryQueueItem(bookmark, failure, attempts, message) {
+  return {
+    category: 'ai-failure',
+    type: failure.type,
+    code: failure.code,
+    retryable: failure.retryable,
+    provider: failure.provider,
+    bookmarkId: bookmark.id,
+    url: bookmark.url,
+    canonicalUrl: bookmark.url,
+    message: message || 'AI extraction failed',
+    attempts: Number(attempts || 0),
+    timestamp: new Date().toISOString(),
+    source: 'ai-extract-all',
+    sourceDetail: '',
+  };
+}
+
+async function runAIExtractAll(bookmarks, deps = {}) {
+  const waitFn = deps.waitFn || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const randomFn = deps.randomFn || Math.random;
+  const nowFn = deps.nowFn || (() => Date.now());
+  const updateBookmarkFn = deps.updateBookmarkFn || updateBookmark;
+  const appendFailuresFn = deps.appendFailuresFn || (typeof appendLegacyIngestFailures === 'function' ? appendLegacyIngestFailures : null);
+  const consumeFailuresFn = deps.consumeFailuresFn || (typeof consumeLegacyIngestFailures === 'function' ? consumeLegacyIngestFailures : null);
+  const onProgress = deps.onProgress || (() => {});
+  const settings = deps.settingsOverride || await getSettings();
+  if (!settings.aiEnabled || !settings.aiBaseUrl || !settings.aiModel) {
+    throw new Error('AI not configured');
+  }
+
+  const provider = detectAIProvider(settings);
+  const rateCap = Math.max(1, Number(getProviderRateCap(provider, settings)));
+  const minInterval = Math.ceil(60000 / rateCap);
+  const configuredConcurrency = Math.max(1, Number(settings.aiExtractMaxConcurrency || 2));
+  const providerConcurrencyCap = provider === 'ollama' ? 3 : 2;
+  const maxConcurrency = Math.max(1, Math.min(configuredConcurrency, providerConcurrencyCap));
+  const retryLimit = 2;
+  const backoffBase = Math.max(250, Number(settings.aiExtractBackoffBaseMs || 1000));
+  const breakerThreshold = Math.max(2, Number(settings.aiExtractCircuitBreakerThreshold || 5));
+  const breakerCooldown = Math.max(3000, Number(settings.aiExtractCircuitBreakerCooldownMs || 30000));
+
+  const retryableFailureIds = consumeFailuresFn
+    ? (await consumeFailuresFn((f) => f?.category === 'ai-failure' && f?.retryable !== false)).map((f) => f.bookmarkId).filter(Boolean)
+    : [];
+  const retryableSet = new Set(retryableFailureIds);
+  const queue = (Array.isArray(bookmarks) ? bookmarks : [])
+    .filter((b) => b && b.id)
+    .filter((b) => retryableSet.has(b.id) || !Array.isArray(b.ai_extracted_fields) || b.ai_extracted_fields.length === 0)
+    .filter((b) => !!(b.ingest_snapshot || b.pageMeta || b.summary));
+
+  const total = queue.length;
+  let succeeded = 0;
+  let failed = 0;
+  let index = 0;
+  let nextAllowedAt = 0;
+  let consecutiveFailures = 0;
+  let circuitOpenUntil = 0;
+  let stopDueToCircuit = false;
+  const retryQueue = [];
+
+  async function acquireRateSlot() {
+    const now = nowFn();
+    const waitMs = Math.max(0, nextAllowedAt - now);
+    nextAllowedAt = Math.max(now, nextAllowedAt) + minInterval;
+    if (waitMs > 0) await waitFn(waitMs);
+  }
+
+  async function processOne(bookmark) {
+    let lastError = null;
+    for (let attempt = 0; attempt <= retryLimit; attempt++) {
+      try {
+        await acquireRateSlot();
+        const extracted = await extractBookmarkMetadata(
+          bookmark.title,
+          bookmark.url,
+          bookmark.summary,
+          bookmark.pageMeta || bookmark.ingest_snapshot || null,
+          { strictAI: true, settingsOverride: settings }
+        );
+        await updateBookmarkFn(bookmark.id, {
+          concepts: extracted.concepts,
+          entities: extracted.entities,
+          keywords: extracted.keywords,
+          key_statistics: extracted.key_statistics,
+          purpose: extracted.purpose,
+          thesis: extracted.thesis,
+          key_message: extracted.key_message,
+          ai_extracted_fields: extracted.ai_extracted_fields,
+          extraction_confidence: extracted.extraction_confidence,
+          extraction_timestamp: extracted.extraction_timestamp,
+          ingest_ai_status: 'done',
+          ingest_ai_last_error: '',
+          ingest_ai_retry_count: attempt,
+        });
+        consecutiveFailures = 0;
+        succeeded++;
+        return;
+      } catch (error) {
+        lastError = error;
+        const failure = classifyAIFailure(error, provider);
+        if (!failure.retryable || attempt >= retryLimit) {
+          failed++;
+          consecutiveFailures += 1;
+          retryQueue.push(toRetryQueueItem(bookmark, failure, attempt + 1, error?.message));
+          await updateBookmarkFn(bookmark.id, {
+            ingest_ai_status: 'failed',
+            ingest_ai_last_error: error?.message || 'AI extraction failed',
+            ingest_ai_retry_count: attempt + 1,
+          });
+          if (consecutiveFailures >= breakerThreshold) {
+            circuitOpenUntil = nowFn() + breakerCooldown;
+            stopDueToCircuit = true;
+          }
+          return;
+        }
+        const jitter = Math.floor(randomFn() * backoffBase);
+        const backoffMs = Math.min(30000, (backoffBase * Math.pow(2, attempt)) + jitter);
+        await waitFn(backoffMs);
+      }
+    }
+    failed++;
+    const classified = classifyAIFailure(lastError, provider);
+    retryQueue.push(toRetryQueueItem(bookmark, classified, retryLimit + 1, lastError?.message));
+  }
+
+  async function worker() {
+    while (index < queue.length && !stopDueToCircuit) {
+      if (circuitOpenUntil > nowFn()) {
+        stopDueToCircuit = true;
+        break;
+      }
+      const i = index++;
+      const item = queue[i];
+      await processOne(item);
+      onProgress({
+        total,
+        done: succeeded + failed,
+        succeeded,
+        failed,
+        current: item?.url || '',
+        provider,
+        circuitOpen: stopDueToCircuit,
+      });
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(maxConcurrency, Math.max(1, queue.length)) }, () => worker());
+  await Promise.all(workers);
+
+  if (stopDueToCircuit) {
+    while (index < queue.length) {
+      const item = queue[index++];
+      retryQueue.push(toRetryQueueItem(item, {
+        category: 'ai-failure',
+        type: 'circuit-open',
+        code: 'circuit-open',
+        retryable: true,
+        provider,
+      }, 0, 'Circuit breaker open, queued for retry'));
+    }
+  }
+
+  if (appendFailuresFn && retryQueue.length) {
+    await appendFailuresFn(retryQueue);
+  }
+
+  return {
+    provider,
+    total,
+    succeeded,
+    failed: retryQueue.length,
+    queued: retryQueue.length,
+    circuitOpen: stopDueToCircuit,
+    retryQueue,
+  };
 }
 
 /**
@@ -360,4 +613,17 @@ function suggestTags(title, url) {
   } catch (_) {}
 
   return [...new Set(matched)].slice(0, 6);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    suggestNodeMetadata,
+    callAI,
+    extractBookmarkMetadata,
+    detectAIProvider,
+    getProviderRateCap,
+    classifyAIFailure,
+    runAIExtractAll,
+    suggestTags,
+  };
 }

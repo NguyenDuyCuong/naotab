@@ -28,6 +28,7 @@ Chrome Extension (Manifest V3) biến các tab trình duyệt thành một **kho
 - **Sidebar node list** — sidebar trái chia đôi: Tags (trên) + danh sách node hiện tại (dưới), cập nhật realtime theo filter/search
 - **Hover tooltips** — di chuột vào node hoặc item sidebar để xem trước title + summary ngay lập tức
 - **100% cục bộ** — toàn bộ dữ liệu trong `chrome.storage.local`, không gửi ra ngoài ngoại trừ lệnh gọi AI tùy chọn
+- **Legacy Import (Bookmarks + History)** — nhập hàng loạt từ Chrome Bookmarks (đệ quy toàn bộ thư mục) và toàn bộ History, có pause/resume/cancel, tiến trình realtime, danh sách lỗi và retry lỗi
 
 ---
 
@@ -71,6 +72,15 @@ Nếu AI đã cấu hình, nút **✨ AI Suggest** xuất hiện trong panel. D�
 
 ### Cài đặt AI
 Nhấn **⚙️** → chọn preset provider → nhập API key và model → **🧪 Test connection** → **💾 Save Settings**.
+
+### Legacy Import (Bookmarks + History)
+Mở **Settings** → card **Legacy Import**:
+- Chọn nguồn: Bookmarks và/hoặc History
+- Chọn strategy: Hybrid (fetch trước + fallback hidden tab), Fetch only, hoặc Hidden-tab only
+- Cấu hình skip-existing + retry count
+- Dùng **Start / Pause / Resume / Cancel**
+- Theo dõi counter + current URL + danh sách lỗi realtime
+- Nhấn **Retry failed** để chạy lại URL lỗi
 
 ---
 
@@ -124,6 +134,8 @@ AI **tắt theo mặc định**. Gợi ý tags offline (keyword + domain) luôn 
 | `storage` | Lưu bookmarks và settings cục bộ |
 | `unlimitedStorage` | Bỏ giới hạn 10MB mặc định |
 | `scripting` + `host_permissions` | Đọc meta tags trang khi cần |
+| `bookmarks` | Đọc toàn bộ cây bookmark Chrome để nhập liệu |
+| `history` | Đọc lịch sử duyệt web để legacy import |
 
 ---
 
@@ -151,7 +163,7 @@ bookmark-vault/
 - [ ] Dark mode
 - [ ] Phát hiện tab trùng lặp
 - [ ] AI tự động nhóm bookmark
-- [ ] Tích hợp lịch sử trình duyệt
+- [x] Tích hợp lịch sử trình duyệt (legacy import)
 
 ---
 

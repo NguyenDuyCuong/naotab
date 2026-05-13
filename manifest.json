@@ -8,7 +8,9 @@
     "storage",
     "unlimitedStorage",
     "scripting",
-    "identity"
+    "identity",
+    "bookmarks",
+    "history"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -19,6 +21,9 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "bookmark-vault"
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "oauth2": {
     "client_id": "988883083098-ce31r6v8tdh8r2fp760vv2vla0mg4pal.apps.googleusercontent.com",
