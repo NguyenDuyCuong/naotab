@@ -8,5 +8,13 @@
 
 2 library files
 
+## High-Impact Files
+
+Changes to these files have the widest blast radius across the codebase:
+
+- `core\ingest.js` — imported by **2** files
+- `core\ai.js` — imported by **1** files
+- `settings.js` — imported by **1** files
+
 ---
-_Back to [index.md](./index.md) · Generated 2026-05-12_
+_Back to [index.md](./index.md) · Generated 2026-05-13_

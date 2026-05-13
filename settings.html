@@ -206,6 +206,106 @@
     }
     .btn-secondary:hover { background: #f1f3f4; }
     .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+      margin-top: 8px;
+    }
+    .status-grid div:nth-child(odd) { color: #5f6368; font-weight: 600; }
+    .status-grid div:nth-child(even) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-box .full-row {
+      margin-top: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .failures-box {
+      background: #f8f9fa;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #3c4043;
+    }
+    .failures-list {
+      list-style: disc;
+      padding-left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .empty-state { color: #5f6368; font-style: italic; }
+    .btn-danger {
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid #f28b82;
+      border-radius: 6px;
+      background: #fce8e6;
+      color: #b31412;
+      cursor: pointer;
+    }
+    .btn-danger:hover { background: #fad2cf; }
+    .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+    .progress-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .progress-item {
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fafafa;
+      font-size: 11px;
+      color: #5f6368;
+    }
+    .progress-item strong {
+      display: block;
+      font-size: 15px;
+      color: #202124;
+      margin-top: 4px;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      word-break: break-all;
+    }
+    .failure-list {
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid #e8eaed;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fafafa;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .failure-item {
+      border-bottom: 1px solid #eceff1;
+      padding-bottom: 8px;
+      font-size: 12px;
+      color: #3c4043;
+    }
+    .failure-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .failure-url {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #202124;
+      word-break: break-all;
+    }
+    .failure-meta {
+      color: #d93025;
+      margin-top: 2px;
+    }
 
     /* Save button */
     .save-row {
@@ -412,6 +512,154 @@
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-title">
+      <div>
+        <h2>📥 Legacy Import (Bookmarks + History)</h2>
+        <p>Run full import in background with progress, pause/resume, and failure report.</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="info-box">
+        <strong>Large-history safe mode</strong> keeps ingestion stable with chunked batches, bounded concurrency, per-item timeout, and periodic checkpoints.
+      </div>
+
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Import bookmarks source</div>
+          <div class="toggle-desc">Use Chrome bookmarks as input source</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="legacy-ingest-bookmarks" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Import history source</div>
+          <div class="toggle-desc">Use browser history as input source</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="legacy-ingest-history" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Import strategy</label>
+          <select id="legacy-ingest-strategy">
+            <option value="fetch-first">Fetch-first</option>
+            <option value="hidden-tab">Hidden-tab</option>
+            <option value="hybrid">Hybrid</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Max retries</label>
+          <input type="number" id="legacy-ingest-retries" min="0" max="10" step="1" />
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Skip existing URLs</div>
+          <div class="toggle-desc">Do not re-import URLs already saved</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="legacy-ingest-skip-existing" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="action-row">
+        <button class="btn-secondary" id="btn-legacy-start">▶️ Start</button>
+        <button class="btn-secondary" id="btn-legacy-pause">⏸️ Pause</button>
+        <button class="btn-secondary" id="btn-legacy-resume">⏯️ Resume</button>
+        <button class="btn-secondary" id="btn-legacy-cancel">⛔ Cancel</button>
+        <button class="btn-secondary" id="btn-legacy-retry-failed">🔁 Retry failed</button>
+      </div>
+
+      <div class="status-box">
+        <div><strong>Legacy ingest status</strong></div>
+        <div class="status-grid">
+          <div>State</div><div id="legacy-status-state">idle</div>
+          <div>Phase</div><div id="legacy-status-phase">ready</div>
+          <div>Processed / Total</div><div id="legacy-status-progress">0 / 0</div>
+          <div>Imported</div><div id="legacy-status-imported">0</div>
+          <div>Skipped</div><div id="legacy-status-skipped">0</div>
+          <div>Failed</div><div id="legacy-status-failed">0</div>
+          <div>Started at</div><div id="legacy-status-started-at">Never</div>
+          <div>Updated at</div><div id="legacy-status-updated-at">Never</div>
+        </div>
+        <div class="full-row"><strong>Current URL:</strong> <span id="legacy-status-current-url">—</span></div>
+        <div class="full-row"><strong>Last error:</strong> <span id="legacy-status-last-error">—</span></div>
+      </div>
+
+      <div class="failures-box">
+        <div><strong>Failed items</strong></div>
+        <div class="field-row" style="margin-top:8px">
+          <div class="field">
+            <label>Filter by category</label>
+            <select id="legacy-failures-filter">
+              <option value="all">All categories</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Grouped counts</label>
+            <div id="legacy-failures-meta" class="toggle-desc">No failures grouped yet</div>
+          </div>
+        </div>
+        <div class="empty-state" id="legacy-failures-empty">No failed items yet.</div>
+        <ul class="failures-list" id="legacy-failures-list"></ul>
+        <div class="action-row" style="margin-top:8px">
+          <button class="btn-secondary" id="legacy-failures-prev">◀ Prev</button>
+          <div id="legacy-failures-page-info" style="align-self:center;color:#5f6368">1/1 (0 items)</div>
+          <button class="btn-secondary" id="legacy-failures-next">Next ▶</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <div>
+        <h2>🧭 Visualization</h2>
+        <p>Default app view and graph performance budget</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field">
+          <label>Default app view</label>
+          <select id="graph-default-view">
+            <option value="list">List</option>
+            <option value="graph">Graph</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Graph quality</label>
+          <select id="graph-quality-mode">
+            <option value="auto">Auto (recommended)</option>
+            <option value="balanced">Balanced</option>
+            <option value="high">High detail</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Max nodes per graph level</label>
+          <input type="number" id="graph-max-nodes" min="100" max="10000" step="100" />
+        </div>
+        <div class="field">
+          <label>Max edges per graph level</label>
+          <input type="number" id="graph-max-edges" min="500" max="30000" step="500" />
+        </div>
+      </div>
+      <div class="status-note">These limits apply to Overview/Neighborhood graph modes to keep interactions responsive.</div>
+    </div>
+  </div>
+
   <div class="save-row">
     <button class="btn-save" id="btn-save">💾 Save Settings</button>
   </div>
@@ -423,6 +671,7 @@
 <script src="core/schema.js"></script>
 <script src="core/storage.js"></script>
 <script src="core/sync/drive.js"></script>
+<script src="core/ingest.js"></script>
 <script src="settings.js"></script>
 </body>
 </html>

@@ -164,6 +164,26 @@ async function runHealthCheck(allBookmarks) {
       });
     }
   });
+
+  // 9. Duplicate URL candidates (canonical URL)
+  const canonicalMap = new Map();
+  allBookmarks.forEach((b) => {
+    const canonical = canonicalizeUrlForHealth(b.url);
+    if (!canonical) return;
+    if (!canonicalMap.has(canonical)) canonicalMap.set(canonical, []);
+    canonicalMap.get(canonical).push(b);
+  });
+  canonicalMap.forEach((rows, canonical) => {
+    if (rows.length < 2) return;
+    issues.push({
+      type: 'duplicate_url',
+      severity: 'medium',
+      canonical_url: canonical,
+      affected_count: rows.length,
+      ids: rows.map(x => x.id),
+      message: `Canonical URL appears ${rows.length} times`
+    });
+  });
   
   return {
     timestamp,
@@ -178,7 +198,26 @@ async function runHealthCheck(allBookmarks) {
       keyword_inconsistencies: issues.filter(i => i.type === 'inconsistent_keyword_naming').length,
       low_confidence: issues.filter(i => i.type === 'low_confidence_extraction').length,
       stale_metadata: issues.filter(i => i.type === 'stale_metadata').length,
+      duplicate_urls: issues.filter(i => i.type === 'duplicate_url').length,
       total_issues: issues.length
     }
   };
+}
+
+function canonicalizeUrlForHealth(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  try {
+    const parsed = new URL(rawUrl.trim());
+    parsed.hash = '';
+    const blocked = [
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'gclid', 'fbclid', 'ref', 'ref_src'
+    ];
+    blocked.forEach((key) => parsed.searchParams.delete(key));
+    const normalizedSearch = new URLSearchParams([...parsed.searchParams.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+    parsed.search = normalizedSearch.toString() ? `?${normalizedSearch.toString()}` : '';
+    return parsed.toString();
+  } catch (_) {
+    return rawUrl.trim();
+  }
 }

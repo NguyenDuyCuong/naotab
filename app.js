@@ -3,12 +3,19 @@ let allBookmarks = [];
 let activeTag = null;
 let excludedTags = new Set(); // tags excluded from graph edges
 let searchQuery = '';
-let currentView = 'graph';
+let currentView = 'list';
+let currentGraphLevel = 'overview'; // overview|neighborhood|evidence
 let editingId = null;
 let panelId = null; // id bookmark đang hiển thị trong panel
 let panelNodeType = 'bookmark';
 let panelDirty = false;
 let currentNetwork = null; // D3 graph instance (simulation, svg, links, nodes)
+let runtimeSettings = {
+  graphDefaultView: 'list',
+  graphQualityMode: 'auto',
+  graphMaxNodesPerLevel: 1200,
+  graphMaxEdgesPerLevel: 4000,
+};
 
 // NEW in v5: Multi-layer graph support
 let layerToggles = {
@@ -31,8 +38,43 @@ const MIN_RELEVANCE = 0.7; // Only show nodes with relevance >= 0.7
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
-  allBookmarks = await getBookmarks();
+  const [bookmarks, settings] = await Promise.all([getBookmarks(), getSettings()]);
+  allBookmarks = bookmarks;
+  runtimeSettings = {
+    ...runtimeSettings,
+    graphDefaultView: settings.graphDefaultView === 'graph' ? 'graph' : 'list',
+    graphQualityMode: ['auto', 'balanced', 'high'].includes(settings.graphQualityMode)
+      ? settings.graphQualityMode
+      : 'auto',
+    graphMaxNodesPerLevel: Math.min(10000, Math.max(100, Number(settings.graphMaxNodesPerLevel || 1200))),
+    graphMaxEdgesPerLevel: Math.min(30000, Math.max(500, Number(settings.graphMaxEdgesPerLevel || 4000))),
+  };
+  setViewMode(runtimeSettings.graphDefaultView, { render: false });
   renderAll();
+}
+
+function setViewMode(view, options = {}) {
+  const { render = true } = options;
+  currentView = view === 'graph' ? 'graph' : 'list';
+
+  const isList = currentView === 'list';
+  document.getElementById('btn-list-view').classList.toggle('active', isList);
+  document.getElementById('btn-graph-view').classList.toggle('active', !isList);
+  document.getElementById('list-view').style.display = isList ? '' : 'none';
+  document.getElementById('graph-view').style.display = isList ? 'none' : 'block';
+  document.getElementById('graph-level-toggle').classList.toggle('visible', !isList);
+
+  if (render) renderView();
+}
+
+function setGraphLevel(level, options = {}) {
+  const { render = true } = options;
+  const normalized = ['overview', 'neighborhood', 'evidence'].includes(level) ? level : 'overview';
+  currentGraphLevel = normalized;
+  document.getElementById('btn-graph-level-overview').classList.toggle('active', normalized === 'overview');
+  document.getElementById('btn-graph-level-neighborhood').classList.toggle('active', normalized === 'neighborhood');
+  document.getElementById('btn-graph-level-evidence').classList.toggle('active', normalized === 'evidence');
+  if (render && currentView === 'graph') renderView();
 }
 
 function renderAll() {
@@ -70,6 +112,8 @@ function getFiltered() {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 function updateSidebar() {
+  const filtered = getFiltered();
+
   // Tag cloud
   const tagCount = {};
   allBookmarks.forEach(b => b.tags.forEach(t => { tagCount[t] = (tagCount[t] || 0) + 1; }));
@@ -111,6 +155,45 @@ function updateSidebar() {
       renderAll();
     });
   });
+
+  // Layer usage summary (visible scope)
+  const layerCounts = {
+    concepts: 0,
+    entities: 0,
+    keywords: 0,
+  };
+  filtered.forEach((b) => {
+    layerCounts.concepts += Array.isArray(b.concepts) ? b.concepts.filter(c => (c?.relevance || 0) >= MIN_RELEVANCE).length : 0;
+    layerCounts.entities += Array.isArray(b.entities) ? b.entities.length : 0;
+    layerCounts.keywords += Array.isArray(b.keywords) ? b.keywords.filter(k => (k?.relevance || 0) >= MIN_RELEVANCE).length : 0;
+  });
+  const conceptLabel = document.getElementById('layer-concepts-label');
+  const entityLabel = document.getElementById('layer-entities-label');
+  const keywordLabel = document.getElementById('layer-keywords-label');
+  if (conceptLabel) conceptLabel.textContent = `🟢 Concepts (${layerCounts.concepts})`;
+  if (entityLabel) entityLabel.textContent = `🟠 Entities (${layerCounts.entities})`;
+  if (keywordLabel) keywordLabel.textContent = `🟡 Keywords (${layerCounts.keywords})`;
+
+  const layerSummaryEl = document.getElementById('layer-impact-summary');
+  if (layerSummaryEl) {
+    const enabled = [
+      layerToggles.concepts ? 'concepts' : null,
+      layerToggles.entities ? 'entities' : null,
+      layerToggles.keywords ? 'keywords' : null,
+    ].filter(Boolean);
+    layerSummaryEl.textContent =
+      `Layer impact: ${enabled.length}/3 enabled · graph mode ${currentGraphLevel}`;
+  }
+
+  const tagSummaryEl = document.getElementById('tag-impact-summary');
+  if (tagSummaryEl) {
+    const visibleTagCount = sorted.length;
+    const excludedCount = excludedTags.size;
+    const activeText = activeTag ? `active tag "${activeTag}"` : 'no active tag';
+    tagSummaryEl.textContent =
+      `Tag scope: ${activeText} · ${excludedCount} excluded · ${filtered.length}/${allBookmarks.length} visible`;
+    if (visibleTagCount === 0) tagSummaryEl.textContent = 'Tag scope: no tags available yet';
+  }
 }
 
 // ── Sidebar node list ──────────────────────────────────────────────────────────
@@ -163,7 +246,8 @@ function updateSidebarNodeList() {
 // ── Views ──────────────────────────────────────────────────────────────────────
 function renderView() {
   const filtered = getFiltered();
-  document.getElementById('result-count').textContent = filtered.length + ' bookmark';
+  const levelSuffix = currentView === 'graph' ? ` · ${currentGraphLevel}` : '';
+  document.getElementById('result-count').textContent = filtered.length + ' bookmark' + levelSuffix;
   if (currentView === 'list') renderList(filtered);
   else renderGraph(filtered);
   updateSidebarNodeList();
@@ -265,14 +349,14 @@ function renderList(bookmarks) {
  *  4. Skip self-loops (from === to)
  */
 function buildEdgesFromTags(bookmarks) {
-  const edges = [];
-  const seen = new Set(); // Track (from, to) pairs to avoid duplicates
+  const edgeWeightMap = new Map(); // key => {from,to,weight,label}
 
   // Build tag -> [bookmarkIds] map
   const tagMap = {};
   bookmarks.forEach(b => {
     if (b.tags && Array.isArray(b.tags)) {
       b.tags.forEach(tag => {
+        if (excludedTags.has(tag)) return;
         if (!tagMap[tag]) tagMap[tag] = [];
         tagMap[tag].push(b.id);
       });
@@ -290,23 +374,26 @@ function buildEdgesFromTags(bookmarks) {
         // Skip self-loops
         if (from === to) continue;
 
-        // Deduplicate by checking if we've already created an edge for this pair
-        const key = `${from}-${to}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          edges.push({
-            from,
-            to,
-            type: 'tag',
-            label: tag,
-            confidence: 1.0
-          });
+        // Normalize key ordering for undirected graph edges
+        const key = from < to ? `${from}-${to}` : `${to}-${from}`;
+        const existing = edgeWeightMap.get(key);
+        if (existing) {
+          existing.weight += 1;
+        } else {
+          edgeWeightMap.set(key, { from, to, weight: 1, label: tag });
         }
       }
     }
   });
 
-  return edges;
+  return Array.from(edgeWeightMap.values()).map((edge) => ({
+    from: edge.from,
+    to: edge.to,
+    type: 'tag',
+    label: edge.label,
+    confidence: Math.min(1, edge.weight / 3),
+    weight: edge.weight,
+  }));
 }
 
 /**
@@ -808,6 +895,50 @@ function updateEdgesForDedupNodes(edges, oldNodes, newNodes) {
   });
 }
 
+function getGraphRenderBudget(level) {
+  const baseNodeBudget = runtimeSettings.graphMaxNodesPerLevel || 1200;
+  const baseEdgeBudget = runtimeSettings.graphMaxEdgesPerLevel || 4000;
+  const quality = runtimeSettings.graphQualityMode || 'auto';
+
+  let qualityFactor = 1;
+  if (quality === 'balanced') qualityFactor = 0.85;
+  if (quality === 'auto') qualityFactor = allBookmarks.length > 2000 ? 0.6 : (allBookmarks.length > 1000 ? 0.75 : 1);
+
+  const levelFactors = {
+    overview: { nodes: 0.45, edges: 0.35, includeMetadata: false, hideLabels: true },
+    neighborhood: { nodes: 1, edges: 1, includeMetadata: true, hideLabels: false },
+    evidence: { nodes: 0.7, edges: 0.45, includeMetadata: false, hideLabels: false },
+  };
+  const levelCfg = levelFactors[level] || levelFactors.overview;
+  return {
+    maxNodes: Math.max(100, Math.floor(baseNodeBudget * levelCfg.nodes * qualityFactor)),
+    maxEdges: Math.max(200, Math.floor(baseEdgeBudget * levelCfg.edges * qualityFactor)),
+    includeMetadata: levelCfg.includeMetadata,
+    hideLabels: levelCfg.hideLabels,
+  };
+}
+
+function capBookmarksForGraph(bookmarks, maxNodes) {
+  if (bookmarks.length <= maxNodes) return bookmarks;
+  const scored = bookmarks
+    .map((b) => ({
+      bookmark: b,
+      score:
+        (Array.isArray(b.tags) ? b.tags.length : 0) * 3 +
+        (Array.isArray(b.concepts) ? b.concepts.length : 0) * 2 +
+        (Array.isArray(b.entities) ? b.entities.length : 0) +
+        (b.summary ? 2 : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  return scored.slice(0, maxNodes).map(x => x.bookmark);
+}
+
+function pruneEdgesByBudget(edges, maxEdges) {
+  if (edges.length <= maxEdges) return edges;
+  const sorted = [...edges].sort((a, b) => (b.weight || b.confidence || 0) - (a.weight || a.confidence || 0));
+  return sorted.slice(0, maxEdges);
+}
+
 // ── Graph view (D3.js) ─────────────────────────────────────────────────────────
 function renderGraph(bookmarks) {
   if (bookmarks.length === 0) return;
@@ -815,9 +946,13 @@ function renderGraph(bookmarks) {
   const container = document.getElementById('graph-view');
   if (!container) return;
 
+  const budget = getGraphRenderBudget(currentGraphLevel);
+  const selectedBookmarks = capBookmarksForGraph(bookmarks, budget.maxNodes);
+
   // Build edges and compute metrics for bookmarks only
-  const edges = buildEdgesFromTags(bookmarks);
-  const { nodes: metricNodes } = computeNodeMetrics(bookmarks, edges);
+  const rawEdges = buildEdgesFromTags(selectedBookmarks);
+  const edges = pruneEdgesByBudget(rawEdges, budget.maxEdges);
+  const { nodes: metricNodes } = computeNodeMetrics(selectedBookmarks, edges);
   // Normalize bookmark graph node type.
   // Note: bookmark records already have domain "type" (source/entity/...) from schema.
   // For graph rendering, we must keep bookmark nodes as type='bookmark'.
@@ -832,79 +967,75 @@ function renderGraph(bookmarks) {
   const nodeMap = {};
   bookmarkNodes.forEach(n => { nodeMap[n.id] = n; });
   
-  // Extract concept nodes from bookmarks (always create, but mark as disabled if layer OFF)
-  bookmarks.forEach(b => {
-    if (b.concepts && Array.isArray(b.concepts)) {
-      b.concepts.forEach((concept, idx) => {
-        if (concept.relevance >= MIN_RELEVANCE) {
-          const conceptId = `concept_${b.id}_${idx}`;
-          allNodes.push({
-            id: conceptId,
-            type: 'concept',
-            title: concept.name,
-            relevance: concept.relevance,
-            parent: b.id,
-            value: 0.5,
-            degree: 0,
-            group: 999,
-            summary: '',
-            url: '',
-            reading_time: 0,
-            layerEnabled: layerToggles.concepts  // Track if layer is enabled
-          });
-        }
-      });
-    }
-  });
-  
-  // Extract entity nodes from bookmarks (always create, but mark as disabled if layer OFF)
-  bookmarks.forEach(b => {
-    if (b.entities && Array.isArray(b.entities)) {
-      b.entities.forEach((entity, idx) => {
-        const entityId = `entity_${b.id}_${idx}`;
-        allNodes.push({
-          id: entityId,
-          type: 'entity',
-          title: entity.name,
-          entity_type: entity.type,
-          parent: b.id,
-          value: 0.3,
-          degree: 0,
-          group: 999,
-          summary: '',
-          url: '',
-          reading_time: 0,
-          layerEnabled: layerToggles.entities  // Track if layer is enabled
+  // Extract concept/entity/keyword nodes (disabled for overview/evidence modes)
+  if (budget.includeMetadata) {
+    selectedBookmarks.forEach((b) => {
+      if (b.concepts && Array.isArray(b.concepts)) {
+        b.concepts.forEach((concept, idx) => {
+          if (concept.relevance >= MIN_RELEVANCE) {
+            const conceptId = `concept_${b.id}_${idx}`;
+            allNodes.push({
+              id: conceptId,
+              type: 'concept',
+              title: concept.name,
+              relevance: concept.relevance,
+              parent: b.id,
+              value: 0.5,
+              degree: 0,
+              group: 999,
+              summary: '',
+              url: '',
+              reading_time: 0,
+              layerEnabled: layerToggles.concepts
+            });
+          }
         });
-      });
-    }
-  });
-  
-  // Extract keyword nodes from bookmarks (always create, but mark as disabled if layer OFF)
-  bookmarks.forEach(b => {
-    if (b.keywords && Array.isArray(b.keywords)) {
-      b.keywords.forEach((kw, idx) => {
-        if (kw.relevance >= MIN_RELEVANCE) {
-          const kwId = `keyword_${b.id}_${idx}`;
+      }
+
+      if (b.entities && Array.isArray(b.entities)) {
+        b.entities.forEach((entity, idx) => {
+          const entityId = `entity_${b.id}_${idx}`;
           allNodes.push({
-            id: kwId,
-            type: 'keyword',
-            title: kw.word,
-            frequency: kw.frequency,
-            relevance: kw.relevance,
+            id: entityId,
+            type: 'entity',
+            title: entity.name,
+            entity_type: entity.type,
             parent: b.id,
-            value: 0.2,
+            value: 0.3,
             degree: 0,
             group: 999,
             summary: '',
             url: '',
             reading_time: 0,
-            layerEnabled: layerToggles.keywords  // Track if layer is enabled
+            layerEnabled: layerToggles.entities
           });
-        }
-      });
-    }
-  });
+        });
+      }
+
+      if (b.keywords && Array.isArray(b.keywords)) {
+        b.keywords.forEach((kw, idx) => {
+          if (kw.relevance >= MIN_RELEVANCE) {
+            const kwId = `keyword_${b.id}_${idx}`;
+            allNodes.push({
+              id: kwId,
+              type: 'keyword',
+              title: kw.word,
+              frequency: kw.frequency,
+              relevance: kw.relevance,
+              parent: b.id,
+              value: 0.2,
+              degree: 0,
+              group: 999,
+              summary: '',
+              url: '',
+              reading_time: 0,
+              layerEnabled: layerToggles.keywords
+            });
+          }
+        });
+      }
+    });
+  }
 
   // NEW in v5: Build edges between bookmarks and their metadata nodes
   const allEdges = [...edges];
@@ -959,7 +1090,7 @@ function renderGraph(bookmarks) {
   };
 
   // Create D3 chart with multi-layer support
-  const chart = createD3Chart(data, dedupAllNodes);
+  const chart = createD3Chart(data, dedupAllNodes, budget);
 
   // Render
   container.innerHTML = '';
@@ -1014,7 +1145,7 @@ function tuneForces(simulation, nodeCount, edgeCount, links) {
     .force("y", d3.forceY(0).strength(centerStrength));
 }
 
-function createD3Chart(data, allNodes) {
+function createD3Chart(data, allNodes, budget = {}) {
   const container = document.getElementById('graph-view');
   const width = container.clientWidth || 928;
   const height = container.clientHeight || 680;
@@ -1146,7 +1277,7 @@ function createD3Chart(data, allNodes) {
       if (d.type === 'keyword') return '#ca8a04';
       return '#666';
     })
-    .style("opacity", 0.8)
+    .style("opacity", budget.hideLabels ? 0 : 0.8)
     .text(d => truncateLabel(d.title || d.id, d.type === 'keyword' ? 15 : 25));
 
   // Drag behavior
@@ -1193,7 +1324,7 @@ function createD3Chart(data, allNodes) {
 
   // Track tick count for fit-to-bounds (TODO 3)
   let tickCount = 0;
-  const maxTicks = 300;
+  const maxTicks = budget.hideLabels ? 200 : 300;
   let fitApplied = false;
 
   // Simulation tick
@@ -1221,7 +1352,7 @@ function createD3Chart(data, allNodes) {
         .translate(fitTransform.translateX, fitTransform.translateY)
         .scale(fitTransform.scale);
       svg.transition()
-        .duration(500)
+        .duration(budget.hideLabels ? 280 : 500)
         .call(zoom.transform, t);
     }
   });
@@ -1298,26 +1429,37 @@ document.getElementById('search-input').addEventListener('input', e => {
 });
 
 document.getElementById('btn-list-view').addEventListener('click', () => {
-  currentView = 'list';
-  document.getElementById('btn-list-view').classList.add('active');
-  document.getElementById('btn-graph-view').classList.remove('active');
-  document.getElementById('list-view').style.display = '';
-  document.getElementById('graph-view').style.display = 'none';
-  renderView();
+  setViewMode('list');
 });
 
 document.getElementById('btn-graph-view').addEventListener('click', () => {
-  currentView = 'graph';
-  document.getElementById('btn-graph-view').classList.add('active');
-  document.getElementById('btn-list-view').classList.remove('active');
-  document.getElementById('list-view').style.display = 'none';
-  document.getElementById('graph-view').style.display = 'block';
-  renderView();
+  setViewMode('graph');
+});
+
+document.getElementById('btn-graph-level-overview').addEventListener('click', () => {
+  setGraphLevel('overview');
+});
+document.getElementById('btn-graph-level-neighborhood').addEventListener('click', () => {
+  setGraphLevel('neighborhood');
+});
+document.getElementById('btn-graph-level-evidence').addEventListener('click', () => {
+  setGraphLevel('evidence');
 });
 
 document.getElementById('btn-refresh').addEventListener('click', async () => {
-  allBookmarks = await getBookmarks();
+  const [bookmarks, settings] = await Promise.all([getBookmarks(), getSettings()]);
+  allBookmarks = bookmarks;
+  runtimeSettings = {
+    ...runtimeSettings,
+    graphDefaultView: settings.graphDefaultView === 'graph' ? 'graph' : 'list',
+    graphQualityMode: ['auto', 'balanced', 'high'].includes(settings.graphQualityMode)
+      ? settings.graphQualityMode
+      : 'auto',
+    graphMaxNodesPerLevel: Math.min(10000, Math.max(100, Number(settings.graphMaxNodesPerLevel || 1200))),
+    graphMaxEdgesPerLevel: Math.min(30000, Math.max(500, Number(settings.graphMaxEdgesPerLevel || 4000))),
+  };
   closeNodePanel();
+  setViewMode(runtimeSettings.graphDefaultView, { render: false });
   renderAll();
   await refreshAIToolsState();
   showToast('🔄 Refreshed');
@@ -1474,9 +1616,12 @@ if (btnExtractAll) {
       return;
     }
 
-    const toExtract = allBookmarks.filter(b => !b.ai_extracted_fields || b.ai_extracted_fields.length === 0);
+    const toExtract = allBookmarks.filter((b) =>
+      (!b.ai_extracted_fields || b.ai_extracted_fields.length === 0)
+      && !!(b.ingest_snapshot || b.pageMeta || b.summary)
+    );
     if (toExtract.length === 0) {
-      showToast('✅ All bookmarks already extracted!');
+      showToast('✅ No prepared snapshots waiting for AI extract.');
       return;
     }
 
@@ -1486,67 +1631,32 @@ if (btnExtractAll) {
     btnExtractAll.textContent = '⏳ 0/' + toExtract.length;
     setTopbarAsyncStatus(`AI Extract 0/${toExtract.length}`, 0);
 
-    for (let i = 0; i < toExtract.length; i++) {
-      const b = toExtract[i];
-      try {
-        const extracted = await extractBookmarkMetadata(b.title, b.url, b.summary, b.pageMeta);
-        
-        // NEW in v6: Also suggest definitions for extracted concepts and entities
-        let suggestFailures = 0;
-        
-        if (extracted.concepts && Array.isArray(extracted.concepts)) {
-          for (const concept of extracted.concepts) {
-            try {
-              const def = await suggestNodeMetadata(concept, 'concept');
-              if (def && def.definition) {
-                concept.ai_definition = def.definition;
-              }
-            } catch (e) {
-              suggestFailures++;
-            }
-          }
-        }
-        
-        if (extracted.entities && Array.isArray(extracted.entities)) {
-          for (const entity of extracted.entities) {
-            try {
-              const profile = await suggestNodeMetadata(entity, 'entity');
-              if (profile && profile.profile) {
-                entity.ai_profile = profile.profile;
-              }
-            } catch (e) {
-              suggestFailures++;
-            }
-          }
-        }
-        
-        await updateBookmark(b.id, {
-          concepts: extracted.concepts,
-          entities: extracted.entities,
-          keywords: extracted.keywords,
-          key_statistics: extracted.key_statistics,
-          purpose: extracted.purpose,
-          thesis: extracted.thesis,
-          key_message: extracted.key_message,
-          ai_extracted_fields: extracted.ai_extracted_fields,
-          extraction_confidence: extracted.extraction_confidence,
-          extraction_timestamp: extracted.extraction_timestamp
-        });
-        
-        btnExtractAll.textContent = '⏳ ' + (i + 1) + '/' + toExtract.length;
-        const percent = ((i + 1) / toExtract.length) * 100;
-        setTopbarAsyncStatus(`AI Extract ${i + 1}/${toExtract.length}`, percent);
-      } catch (e) {
-        console.warn('Extraction failed for bookmark ' + b.id + ':', e.message);
-      }
+    try {
+      const summary = await runAIExtractAll(toExtract, {
+        updateBookmarkFn: updateBookmark,
+        appendFailuresFn: appendLegacyIngestFailures,
+        consumeFailuresFn: consumeLegacyIngestFailures,
+        onProgress: (progress) => {
+          const done = Number(progress.done || 0);
+          const total = Number(progress.total || toExtract.length);
+          btnExtractAll.textContent = `⏳ ${done}/${total}`;
+          const percent = total > 0 ? (done / total) * 100 : 0;
+          setTopbarAsyncStatus(`AI Extract ${done}/${total}`, percent);
+        },
+      });
+
+      allBookmarks = await getBookmarks();
+      renderAll();
+      const queuedMsg = summary.queued > 0 ? ` (${summary.queued} queued for retry)` : '';
+      showToast(`✅ AI extract done: ${summary.succeeded}/${summary.total}${queuedMsg}`);
+    } catch (e) {
+      console.warn('AI Extract All failed:', e);
+      showToast('❌ AI Extract All failed: ' + (e.message || 'unknown error'));
+    } finally {
+      btnExtractAll.disabled = false;
+      btnExtractAll.textContent = '✨ AI Extract All';
+      clearTopbarAsyncStatus();
     }
-    
-    allBookmarks = await getBookmarks();
-    renderAll();
-    btnExtractAll.disabled = false;
-    btnExtractAll.textContent = '✨ AI Extract All';
-    clearTopbarAsyncStatus();
-    showToast('✅ Extraction complete for ' + toExtract.length + ' bookmarks!');
   });
 }
 
@@ -2026,28 +2136,42 @@ function openBookmarkPanel(bookmarkId) {
   if (connected.length === 0) {
     connectedEl.innerHTML = '';
   } else {
-    connectedEl.innerHTML =
-      '<div class="panel-connected-label">🔗 Connected (' + connected.length + ')</div>' +
-      connected.map(({ bookmark: c, sharedTags }) => {
-        const favicon = c.favIconUrl && c.favIconUrl.startsWith('http')
-          ? '<img src="' + escapeHtml(c.favIconUrl) + '" onerror="this.style.display=\'none\'" />'
-          : '🌐';
-        const tagPills = sharedTags.slice(0, 3).map(t =>
-          '<span class="connected-node-tag">' + escapeHtml(t) + '</span>'
-        ).join('');
-        return (
-          '<div class="connected-node-item" data-id="' + c.id + '" title="' + escapeHtml(c.title) + '">' +
-            '<span class="connected-node-favicon">' + favicon + '</span>' +
-            '<span class="connected-node-title">' + escapeHtml(c.title) + '</span>' +
-            '<span class="connected-node-tags">' + tagPills + '</span>' +
-          '</div>'
+    const CONNECTED_PREVIEW_LIMIT = 30;
+    const renderConnected = (expanded) => {
+      const shown = expanded ? connected : connected.slice(0, CONNECTED_PREVIEW_LIMIT);
+      const hiddenCount = Math.max(0, connected.length - shown.length);
+      connectedEl.innerHTML =
+        '<div class="panel-connected-label">🔗 Connected (' + connected.length + ')</div>' +
+        shown.map(({ bookmark: c, sharedTags }) => {
+          const favicon = c.favIconUrl && c.favIconUrl.startsWith('http')
+            ? '<img src="' + escapeHtml(c.favIconUrl) + '" onerror="this.style.display=\'none\'" />'
+            : '🌐';
+          const tagPills = sharedTags.slice(0, 3).map(t =>
+            '<span class="connected-node-tag">' + escapeHtml(t) + '</span>'
+          ).join('');
+          return (
+            '<div class="connected-node-item" data-id="' + c.id + '" title="' + escapeHtml(c.title) + '">' +
+              '<span class="connected-node-favicon">' + favicon + '</span>' +
+              '<span class="connected-node-title">' + escapeHtml(c.title) + '</span>' +
+              '<span class="connected-node-tags">' + tagPills + '</span>' +
+            '</div>'
+          );
+        }).join('') +
+        (
+          connected.length > CONNECTED_PREVIEW_LIMIT
+            ? '<button class="btn-secondary" id="panel-connected-toggle" style="margin-top:6px;font-size:11px;padding:4px 8px">' +
+              (expanded ? 'Collapse' : `Show more (${hiddenCount})`) +
+              '</button>'
+            : ''
         );
-      }).join('');
 
-    // Click connected item → navigate to that node
-    connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
-      el.addEventListener('click', () => openNodePanel(el.dataset.id, 'bookmark'));
-    });
+      connectedEl.querySelectorAll('.connected-node-item').forEach(el => {
+        el.addEventListener('click', () => openNodePanel(el.dataset.id, 'bookmark'));
+      });
+      const toggleBtn = document.getElementById('panel-connected-toggle');
+      if (toggleBtn) toggleBtn.addEventListener('click', () => renderConnected(!expanded));
+    };
+    renderConnected(false);
   }
 
   // Display extracted metadata if available
@@ -2941,23 +3065,19 @@ document.getElementById('report-save').addEventListener('click', () => {
   showToast('💾 Report saved!');
 });
 
-// Init — default graph view
+// Init — startup view is loaded from Settings (default: list)
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     initToolbarDropdowns();
     refreshAIToolsState();
-    document.getElementById('list-view').style.display = 'none';
-    document.getElementById('graph-view').style.display = 'block';
-    document.getElementById('btn-graph-view').classList.add('active');
-    document.getElementById('btn-list-view').classList.remove('active');
+    setGraphLevel('overview', { render: false });
+    setViewMode('list', { render: false });
     init();
   });
 } else {
   initToolbarDropdowns();
   refreshAIToolsState();
-  document.getElementById('list-view').style.display = 'none';
-  document.getElementById('graph-view').style.display = 'block';
-  document.getElementById('btn-graph-view').classList.add('active');
-  document.getElementById('btn-list-view').classList.remove('active');
+  setGraphLevel('overview', { render: false });
+  setViewMode('list', { render: false });
   init();
 }

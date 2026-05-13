@@ -5,7 +5,7 @@
 //     Increment SCHEMA_VERSION when adding fields.
 //     Add a migration case in migrateBookmark() for each new version.
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 8;
 
 // Canonical shape of a bookmark object.
 // All fields must have a default value so old data is safe to migrate.
@@ -57,6 +57,17 @@ const BOOKMARK_DEFAULTS = {
   ai_extracted_fields: [],   // List of fields extracted by AI (e.g., ['concepts', 'entities', 'keywords'])
   extraction_confidence: 0,  // Overall confidence score (0-1) from AI extraction
   extraction_timestamp: null,// ISO timestamp of last AI extraction
+
+  // NEW in v7: ingestion provenance
+  ingest_source: 'manual',   // manual|bookmark|history|bookmark+history|import
+  ingest_source_detail: '',  // e.g. folder path for bookmark imports
+  ingest_imported_at: '',    // ISO timestamp of ingestion
+  ingest_strategy_used: '',  // fetch|hidden-tab|hybrid
+  ingest_snapshot: null,     // { metaText, contentSample, capturedAt, sourceUrl }
+  ingest_content_signature: '', // normalized signature for alias/duplicate detection
+  ingest_ai_status: 'idle',  // idle|pending|processing|done|failed
+  ingest_ai_last_error: '',
+  ingest_ai_retry_count: 0,
   
   schemaVersion: SCHEMA_VERSION,
 };
@@ -75,6 +86,44 @@ const SETTINGS_DEFAULTS = {
   driveBackupLastError: '',
   driveBackupLastFileId: '',
   driveBackupLastRestoreAt: '',
+  legacyIngestIncludeBookmarks: true,
+  legacyIngestIncludeHistory: true,
+  legacyIngestStrategy: 'fetch-first',
+  legacyIngestSkipExisting: true,
+  legacyIngestRetryCount: 2,
+  legacyIngestSafeMode: true,
+  legacyIngestBatchSize: 200,
+  legacyIngestMaxConcurrency: 2,
+  legacyIngestPerItemTimeoutMs: 8000,
+  legacyIngestCheckpointInterval: 3,
+  legacyIngestLastRunAt: '',
+  legacyIngestLastRunStatus: '',
+  legacyIngestLastRunMessage: '',
+  legacyIngestState: 'idle',
+  legacyIngestPhase: 'ready',
+  legacyIngestProcessed: 0,
+  legacyIngestTotal: 0,
+  legacyIngestImported: 0,
+  legacyIngestSkipped: 0,
+  legacyIngestFailed: 0,
+  legacyIngestCurrentUrl: '',
+  legacyIngestStartedAt: '',
+  legacyIngestUpdatedAt: '',
+  legacyIngestLastError: '',
+  legacyIngestFailures: [],
+  legacyIngestCheckpointCursor: null,
+  legacyIngestCheckpointStats: null,
+  legacyIngestCheckpointUpdatedAt: '',
+  aiExtractMaxConcurrency: 2,
+  aiExtractRateCapPerMinute: 30,
+  aiExtractBackoffBaseMs: 1000,
+  aiExtractCircuitBreakerThreshold: 5,
+  aiExtractCircuitBreakerCooldownMs: 30000,
+  aiExtractRetryQueue: [],
+  graphDefaultView: 'list',
+  graphQualityMode: 'auto',
+  graphMaxNodesPerLevel: 1200,
+  graphMaxEdgesPerLevel: 4000,
 };
 
 /**
@@ -159,6 +208,23 @@ function migrateBookmark(raw) {
     }
   }
 
+  // v6 → v7: ingestion provenance fields
+  if (v < 7) {
+    b.ingest_source = b.ingest_source || 'manual';
+    b.ingest_source_detail = b.ingest_source_detail || '';
+    b.ingest_imported_at = b.ingest_imported_at || '';
+    b.ingest_strategy_used = b.ingest_strategy_used || '';
+  }
+
+  // v7 → v8: ingestion snapshot + AI extraction queue fields
+  if (v < 8) {
+    b.ingest_snapshot = b.ingest_snapshot || null;
+    b.ingest_content_signature = b.ingest_content_signature || '';
+    b.ingest_ai_status = b.ingest_ai_status || 'idle';
+    b.ingest_ai_last_error = b.ingest_ai_last_error || '';
+    b.ingest_ai_retry_count = Number.isFinite(b.ingest_ai_retry_count) ? b.ingest_ai_retry_count : 0;
+  }
+
   b.schemaVersion = SCHEMA_VERSION;
   return b;
 }
@@ -168,7 +234,26 @@ function migrateBookmark(raw) {
  * Build a new bookmark object with all required fields populated.
  * Strips _aiText from pageMeta before storing.
  */
-function createBookmark({ url, title, reason, summary, tags, favIconUrl, pageMeta, ai_generated, ai_tags }) {
+function createBookmark({
+  url,
+  title,
+  reason,
+  summary,
+  tags,
+  favIconUrl,
+  pageMeta,
+  ai_generated,
+  ai_tags,
+  ingest_source,
+  ingest_source_detail,
+  ingest_imported_at,
+  ingest_strategy_used,
+  ingest_snapshot,
+  ingest_content_signature,
+  ingest_ai_status,
+  ingest_ai_last_error,
+  ingest_ai_retry_count,
+}) {
   let cleanMeta = null;
   if (pageMeta) {
     const { _aiText, ...rest } = pageMeta;
@@ -201,6 +286,15 @@ function createBookmark({ url, title, reason, summary, tags, favIconUrl, pageMet
   bookmark.ai_tags = ai_tags || false;
   bookmark.content_type = detectContentType(bookmark.url, bookmark.tags, pageMeta);
   bookmark.reading_time = estimateReadingTime(bookmark.summary);
+  bookmark.ingest_source = ingest_source || 'manual';
+  bookmark.ingest_source_detail = ingest_source_detail || '';
+  bookmark.ingest_imported_at = ingest_imported_at || '';
+  bookmark.ingest_strategy_used = ingest_strategy_used || '';
+  bookmark.ingest_snapshot = ingest_snapshot || null;
+  bookmark.ingest_content_signature = ingest_content_signature || '';
+  bookmark.ingest_ai_status = ingest_ai_status || (bookmark.ingest_snapshot ? 'pending' : 'idle');
+  bookmark.ingest_ai_last_error = ingest_ai_last_error || '';
+  bookmark.ingest_ai_retry_count = Number.isFinite(ingest_ai_retry_count) ? ingest_ai_retry_count : 0;
 
   return bookmark;
 }
