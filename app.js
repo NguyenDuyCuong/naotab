@@ -3,6 +3,7 @@ let allBookmarks = [];
 let activeTag = null;
 let excludedTags = new Set(); // tags excluded from graph edges
 let searchQuery = '';
+let searchTimeout = null; // debounce timer
 let currentView = 'list';
 let currentGraphLevel = 'overview'; // overview|neighborhood|evidence
 let editingId = null;
@@ -11,6 +12,10 @@ let panelNodeType = 'bookmark';
 let overviewClusterMembers = new Map(); // clusterNodeId → [bookmark, ...]
 let panelDirty = false;
 let currentNetwork = null; // D3 graph instance (simulation, svg, links, nodes)
+let selectedBookmarks = new Set(); // bookmarks selected for bulk delete
+let recentSearches = []; // recent search queries
+const MAX_RECENT_SEARCHES = 5;
+const SEARCH_DEBOUNCE_MS = 300;
 let runtimeSettings = {
   graphDefaultView: 'list',
   graphQualityMode: 'auto',
@@ -50,6 +55,17 @@ async function init() {
     graphMaxNodesPerLevel: Math.min(10000, Math.max(100, Number(settings.graphMaxNodesPerLevel || 1200))),
     graphMaxEdgesPerLevel: Math.min(30000, Math.max(500, Number(settings.graphMaxEdgesPerLevel || 4000))),
   };
+  
+  // Load persisted recent searches
+  chrome.storage.local.get(['recentSearches'], (result) => {
+    if (result.recentSearches && Array.isArray(result.recentSearches)) {
+      recentSearches = result.recentSearches;
+      if (currentView === 'list') {
+        updateRecentSearches();
+      }
+    }
+  });
+  
   setViewMode(runtimeSettings.graphDefaultView, { render: false });
   renderAll();
 }
@@ -64,6 +80,7 @@ function setViewMode(view, options = {}) {
   document.getElementById('list-view').style.display = isList ? '' : 'none';
   document.getElementById('graph-view').style.display = isList ? 'none' : 'block';
   document.getElementById('graph-level-toggle').classList.toggle('visible', !isList);
+  document.getElementById('sub-toolbar').style.display = isList ? '' : 'none';
 
   if (render) renderView();
 }
@@ -81,22 +98,211 @@ function setGraphLevel(level, options = {}) {
 function renderAll() {
   updateSidebar();
   renderView();
+  updateDeleteButtonState();
 }
 
 // ── Filter logic ───────────────────────────────────────────────────────────────
-function getFiltered() {
-  let filtered = allBookmarks.filter(b => {
-    if (activeTag && !b.tags.includes(activeTag)) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const inTitle = b.title.toLowerCase().includes(q);
-      const inUrl = b.url.toLowerCase().includes(q);
-      const inReason = (b.reason || '').toLowerCase().includes(q);
-      const inTags = b.tags.some(t => t.toLowerCase().includes(q));
-      if (!inTitle && !inUrl && !inReason && !inTags) return false;
+
+/**
+ * parseSearchQuery(query)
+ * Parse user search query into tokens and scoped filters.
+ * Supports:
+ * - tag:rust → filter by tag
+ * - type:article → filter by content type
+ * - url:github.com → filter by URL
+ * - title:keyword → search in title only
+ * - -exclude OR NOT exclude → exclude term
+ * - "phrase" → exact phrase match
+ * - word1 word2 → AND logic (both must match)
+ */
+function parseSearchQuery(query) {
+  if (!query || query.trim().length === 0) {
+    return { 
+      tokens: [], 
+      tagFilters: [], 
+      typeFilters: [], 
+      urlFilter: null,
+      titleFilter: null,
+      excludeTerms: [],
+      phrases: [] 
+    };
+  }
+  
+  const parts = [];
+  const phrases = [];
+  const tagFilters = [];
+  const typeFilters = [];
+  let urlFilter = null;
+  let titleFilter = null;
+  const excludeTerms = [];
+  
+  // Extract quoted phrases
+  let q = query;
+  const phraseRegex = /"([^"]+)"/g;
+  let match;
+  while ((match = phraseRegex.exec(q)) !== null) {
+    phrases.push(match[1].toLowerCase());
+  }
+  q = q.replace(phraseRegex, ''); // Remove phrases from query
+  
+  // Extract scoped filters and exclusions
+  const scopedRegex = /(\w+):([^\s]+)/g;
+  while ((match = scopedRegex.exec(q)) !== null) {
+    const [fullMatch, scope, value] = match;
+    if (scope === 'tag') {
+      tagFilters.push(value.toLowerCase());
+    } else if (scope === 'type') {
+      typeFilters.push(value.toLowerCase());
+    } else if (scope === 'url') {
+      urlFilter = value.toLowerCase();
+    } else if (scope === 'title') {
+      titleFilter = value.toLowerCase();
     }
-    return true;
-  });
+  }
+  q = q.replace(scopedRegex, ''); // Remove scoped filters
+  
+  // Extract exclusions (-term or NOT term)
+  const excludeRegex = /(?:^|\s)(?:-|NOT\s+)(\S+)/gi;
+  while ((match = excludeRegex.exec(q)) !== null) {
+    excludeTerms.push(match[1].toLowerCase());
+  }
+  q = q.replace(excludeRegex, '');
+  
+  // Split remaining into tokens (AND logic)
+  const tokens = q.trim().split(/\s+/).filter(t => t.length > 0).map(t => t.toLowerCase());
+  
+  return {
+    tokens,
+    tagFilters,
+    typeFilters,
+    urlFilter,
+    titleFilter,
+    excludeTerms,
+    phrases
+  };
+}
+
+/**
+ * scoreBookmark(bookmark, parsedQuery)
+ * Score a bookmark against parsed query.
+ * Returns score (0-100+), higher is better match.
+ * Score breakdown:
+ * - Phrase match: 50 points (exact phrase in title/summary/reason)
+ * - Title word match: 10 points per word
+ * - Tag match: 8 points per word
+ * - URL match: 5 points
+ * - Reason match: 3 points
+ * - Summary match: 2 points
+ * - Meta match: 1 point
+ */
+function scoreBookmark(bookmark, parsedQuery) {
+  if (!parsedQuery || (parsedQuery.tokens.length === 0 && parsedQuery.phrases.length === 0)) {
+    return 100; // No search query = all match
+  }
+  
+  let score = 0;
+  const titleLower = bookmark.title.toLowerCase();
+  const urlLower = bookmark.url.toLowerCase();
+  const reasonLower = (bookmark.reason || '').toLowerCase();
+  const summaryLower = (bookmark.summary || '').toLowerCase();
+  const descLower = (bookmark.pageMeta?.description || '').toLowerCase();
+  const ogTitleLower = (bookmark.pageMeta?.ogTitle || '').toLowerCase();
+  const siteNameLower = (bookmark.pageMeta?.siteName || '').toLowerCase();
+  
+  // Check exclusions first (if any match, return 0)
+  for (const term of parsedQuery.excludeTerms) {
+    if (titleLower.includes(term) || urlLower.includes(term) || 
+        reasonLower.includes(term) || summaryLower.includes(term)) {
+      return -999; // Excluded
+    }
+  }
+  
+  // Phrase matches (50 points each)
+  for (const phrase of parsedQuery.phrases) {
+    if (titleLower.includes(phrase)) {
+      score += 50;
+    } else if (reasonLower.includes(phrase) || summaryLower.includes(phrase)) {
+      score += 30;
+    }
+  }
+  
+  // Title filter: if specified, must match in title
+  if (parsedQuery.titleFilter) {
+    if (!titleLower.includes(parsedQuery.titleFilter)) {
+      return 0;
+    }
+    score += 20;
+  }
+  
+  // Token scoring (AND logic: all tokens must match somewhere)
+  let allTokensMatch = true;
+  for (const token of parsedQuery.tokens) {
+    let tokenScore = 0;
+    
+    if (titleLower.includes(token)) tokenScore = Math.max(tokenScore, 10);
+    if (bookmark.tags.some(t => t.toLowerCase().includes(token))) tokenScore = Math.max(tokenScore, 8);
+    if (urlLower.includes(token)) tokenScore = Math.max(tokenScore, 5);
+    if (reasonLower.includes(token)) tokenScore = Math.max(tokenScore, 3);
+    if (summaryLower.includes(token)) tokenScore = Math.max(tokenScore, 2);
+    if (descLower.includes(token) || ogTitleLower.includes(token) || siteNameLower.includes(token)) {
+      tokenScore = Math.max(tokenScore, 1);
+    }
+    
+    if (tokenScore === 0) {
+      allTokensMatch = false;
+      break; // One token doesn't match = AND fails
+    }
+    score += tokenScore;
+  }
+  
+  if (!allTokensMatch) return 0; // AND logic: all tokens must match
+  
+  return score;
+}
+
+function getFiltered() {
+  const parsedQuery = parseSearchQuery(searchQuery);
+  
+  let filtered = allBookmarks
+    .map(b => ({ 
+      bookmark: b, 
+      score: scoreBookmark(b, parsedQuery) 
+    }))
+    .filter(item => item.score > 0) // Keep only matching bookmarks
+    .sort((a, b) => {
+      // Sort by score (descending), then by savedAt (newest first)
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.bookmark.savedAt) - new Date(a.bookmark.savedAt);
+    })
+    .map(item => item.bookmark);
+  
+  // Apply active tag filter (if set)
+  if (activeTag) {
+    filtered = filtered.filter(b => b.tags.includes(activeTag));
+  }
+  
+  // Apply scoped type filters (from parsed query)
+  if (parsedQuery.typeFilters.length > 0) {
+    filtered = filtered.filter(b => 
+      parsedQuery.typeFilters.includes((b.content_type || 'article').toLowerCase())
+    );
+  }
+  
+  // Apply scoped tag filters (from parsed query)
+  if (parsedQuery.tagFilters.length > 0) {
+    filtered = filtered.filter(b => 
+      parsedQuery.tagFilters.some(tagFilter =>
+        b.tags.some(t => t.toLowerCase().includes(tagFilter))
+      )
+    );
+  }
+  
+  // Apply scoped URL filter (from parsed query)
+  if (parsedQuery.urlFilter) {
+    filtered = filtered.filter(b => 
+      b.url.toLowerCase().includes(parsedQuery.urlFilter)
+    );
+  }
 
   // NEW in v3: Filter by content type
   const selectedTypes = new Set();
@@ -139,6 +345,7 @@ function updateSidebar() {
     el.addEventListener('click', (e) => {
       if (e.target.classList.contains('tag-exclude-btn')) return;
       activeTag = activeTag === el.dataset.tag ? null : el.dataset.tag;
+      selectedBookmarks.clear();
       renderAll();
     });
   });
@@ -277,10 +484,12 @@ function renderList(bookmarks) {
       '<span class="card-tag" data-tag="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>'
     ).join('');
     const date = new Date(b.savedAt).toLocaleDateString('en-US');
+    const isSelected = selectedBookmarks.has(b.id);
 
     return (
-      '<div class="bookmark-card" data-id="' + b.id + '">' +
+      '<div class="bookmark-card' + (isSelected ? ' selected' : '') + '" data-id="' + b.id + '">' +
         '<div class="card-header">' +
+          '<input type="checkbox" class="card-checkbox" data-id="' + b.id + '"' + (isSelected ? ' checked' : '') + '>' +
           '<div class="card-favicon">' + favicon + '</div>' +
           '<div class="card-main">' +
             '<a class="card-title" href="' + escapeHtml(b.url) + '" target="_blank" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</a>' +
@@ -302,18 +511,31 @@ function renderList(bookmarks) {
   }).join('');
 
   // Events
+  container.querySelectorAll('.card-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      const id = checkbox.dataset.id;
+      if (e.target.checked) {
+        selectedBookmarks.add(id);
+      } else {
+        selectedBookmarks.delete(id);
+      }
+      updateDeleteButtonState();
+    });
+  });
+
   container.querySelectorAll('.card-tag').forEach(el => {
     el.addEventListener('click', () => {
       activeTag = el.dataset.tag;
+      selectedBookmarks.clear();
       renderAll();
     });
   });
 
-  // Click card → open side panel (ignore clicks on links/buttons)
+  // Click card → open side panel (ignore clicks on links/buttons/checkboxes)
   container.querySelectorAll('.bookmark-card').forEach(card => {
     card.style.cursor = 'pointer';
     card.addEventListener('click', (e) => {
-      if (e.target.closest('a, button, select')) return;
+      if (e.target.closest('a, button, select, input[type="checkbox"]')) return;
       openNodePanel(card.dataset.id);
     });
   });
@@ -1612,8 +1834,22 @@ document.getElementById('edit-save').addEventListener('click', async () => {
 
 // ── Toolbar events ─────────────────────────────────────────────────────────────
 document.getElementById('search-input').addEventListener('input', e => {
-  searchQuery = e.target.value;
-  renderView();
+  const newQuery = e.target.value;
+  searchQuery = newQuery;
+  selectedBookmarks.clear();
+  
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    renderView();
+    updateDeleteButtonState();
+  }, SEARCH_DEBOUNCE_MS);
+});
+
+document.getElementById('search-input').addEventListener('blur', e => {
+  const finalQuery = e.target.value;
+  if (finalQuery.length > 2) {
+    addRecentSearch(finalQuery);
+  }
 });
 
 document.getElementById('btn-list-view').addEventListener('click', () => {
@@ -2058,11 +2294,96 @@ function showImportPreflightModal(summary, fileName = '') {
   });
 }
 
+function updateDeleteButtonState() {
+  const btn = document.getElementById('btn-delete-all');
+  if (!btn) return;
+  
+  const filtered = getFiltered();
+  const selectedCount = selectedBookmarks.size;
+  
+  if (selectedCount > 0) {
+    btn.textContent = '🗑️ Delete ' + selectedCount;
+    btn.style.opacity = '1';
+  } else if (filtered.length > 0) {
+    btn.textContent = '🗑️ Delete all (' + filtered.length + ')';
+    btn.style.opacity = '0.7';
+  } else {
+    btn.textContent = '🗑️ Delete all';
+    btn.style.opacity = '0.5';
+  }
+  
+  updateSelectAllCheckbox();
+  updateRecentSearches();
+}
+
+function updateSelectAllCheckbox() {
+  const checkbox = document.getElementById('select-all-checkbox');
+  if (!checkbox) return;
+  
+  const filtered = getFiltered();
+  const selectedCount = selectedBookmarks.size;
+  const allSelected = filtered.length > 0 && selectedCount === filtered.length;
+  
+  checkbox.checked = allSelected;
+  checkbox.indeterminate = selectedCount > 0 && !allSelected;
+}
+
+function updateRecentSearches() {
+  const container = document.getElementById('recent-searches');
+  if (!container) return;
+  
+  container.innerHTML = recentSearches.map(search =>
+    '<span class="recent-search-badge" data-search="' + escapeHtml(search) + '">' +
+      escapeHtml(search) +
+      '<span class="badge-close">✕</span>' +
+    '</span>'
+  ).join('');
+  
+  container.querySelectorAll('.recent-search-badge').forEach(badge => {
+    badge.addEventListener('click', (e) => {
+      if (e.target.classList.contains('badge-close')) {
+        const search = badge.dataset.search;
+        recentSearches = recentSearches.filter(s => s !== search);
+        chrome.storage.local.set({ recentSearches });
+        updateRecentSearches();
+      } else {
+        searchQuery = badge.dataset.search;
+        document.getElementById('search-input').value = searchQuery;
+        selectedBookmarks.clear();
+        renderAll();
+      }
+    });
+  });
+}
+
+function addRecentSearch(query) {
+  if (!query || query.length === 0) return;
+  recentSearches = recentSearches.filter(s => s !== query);
+  recentSearches.unshift(query);
+  if (recentSearches.length > MAX_RECENT_SEARCHES) {
+    recentSearches.pop();
+  }
+  
+  // Persist to chrome storage
+  chrome.storage.local.set({ recentSearches });
+  updateRecentSearches();
+}
+
 function showDeleteAllModal(total) {
   const modal = document.getElementById('delete-all-modal');
   const input = document.getElementById('delete-all-confirm-input');
   const cancelBtn = document.getElementById('delete-all-cancel');
   const confirmBtn = document.getElementById('delete-all-confirm');
+  const titleEl = modal.querySelector('.overlay-modal-title');
+  const textEl = modal.querySelector('.overlay-modal-text');
+  let previewEl = modal.querySelector('.delete-preview');
+  
+  // Create preview section if not exists
+  if (!previewEl) {
+    previewEl = document.createElement('div');
+    previewEl.className = 'delete-preview';
+    modal.querySelector('.overlay-modal-field').parentElement.insertBefore(previewEl, modal.querySelector('.overlay-modal-field'));
+  }
 
   input.value = '';
   confirmBtn.disabled = true;
@@ -2070,13 +2391,35 @@ function showDeleteAllModal(total) {
   modal.classList.remove('hidden');
   input.focus();
 
+  // Show preview
+  const filtered = getFiltered();
+  const toDelete = selectedBookmarks.size > 0 
+    ? filtered.filter(b => selectedBookmarks.has(b.id))
+    : filtered;
+  
+  titleEl.textContent = '🗑️ Delete ' + toDelete.length + ' bookmark' + (toDelete.length !== 1 ? 's' : '');
+  textEl.innerHTML = '<strong>' + toDelete.length + ' item(s)</strong> will be deleted. To confirm, type <strong>DELETE</strong> below.';
+  
+  // Build preview list
+  previewEl.innerHTML = '<div class="delete-preview-items">' +
+    toDelete.slice(0, 5).map(b => 
+      '<div class="delete-preview-item">' +
+        '<span class="preview-title">' + escapeHtml(b.title.substring(0, 50)) + 
+        (b.title.length > 50 ? '...' : '') + '</span>' +
+      '</div>'
+    ).join('') +
+    (toDelete.length > 5 ? '<div class="delete-preview-item">... and ' + (toDelete.length - 5) + ' more</div>' : '') +
+  '</div>';
+
   return new Promise(resolve => {
     const onInput = () => {
       confirmBtn.disabled = input.value.trim().toUpperCase() !== 'DELETE';
     };
 
-    const close = (result) => {
-      modal.classList.add('hidden');
+    const close = (result, skipHide = false) => {
+      if (!skipHide) {
+        modal.classList.add('hidden');
+      }
       input.removeEventListener('input', onInput);
       cancelBtn.onclick = null;
       confirmBtn.onclick = null;
@@ -2085,10 +2428,10 @@ function showDeleteAllModal(total) {
     };
 
     input.addEventListener('input', onInput);
-    cancelBtn.onclick = () => close(false);
-    confirmBtn.onclick = () => close(true);
+    cancelBtn.onclick = () => close(false, false); // Close modal immediately
+    confirmBtn.onclick = () => close(true, true);  // Don't close yet - deletion handler will close it
     modal.onclick = (ev) => {
-      if (ev.target.classList.contains('overlay-modal-backdrop')) close(false);
+      if (ev.target.classList.contains('overlay-modal-backdrop')) close(false, false);
     };
   });
 }
@@ -3011,18 +3354,87 @@ document.getElementById('panel-delete').addEventListener('click', async () => {
 
 // ── Delete all ─────────────────────────────────────────────────────────────────
 document.getElementById('btn-delete-all').addEventListener('click', async () => {
-  if (allBookmarks.length === 0) { showToast('⚠️ No bookmarks yet!'); return; }
-  const approved = await showDeleteAllModal(allBookmarks.length);
-  if (!approved) return;
-  if (typeof clearAllBookmarks === 'function') {
-    await clearAllBookmarks();
-  } else {
-    await chrome.storage.local.remove('tab_bookmarks');
+  const filtered = getFiltered();
+  const selectedCount = selectedBookmarks.size;
+  
+  if (filtered.length === 0) { 
+    showToast('⚠️ No bookmarks to delete!'); 
+    return; 
   }
-  allBookmarks = [];
+  
+  const approved = await showDeleteAllModal(filtered.length);
+  if (!approved) return;
+  
+  // Show progress
+  const modal = document.getElementById('delete-all-modal');
+  const backdrop = modal.querySelector('.overlay-modal-backdrop');
+  const progressEl = document.getElementById('delete-progress');
+  const input = document.getElementById('delete-all-confirm-input');
+  const confirmBtn = document.getElementById('delete-all-confirm');
+  const cancelBtn = document.getElementById('delete-all-cancel');
+  
+  // Disable backdrop click during deletion
+  const oldBackdropOnclick = backdrop.onclick;
+  backdrop.onclick = null;
+  
+  progressEl.style.display = 'block';
+  input.style.display = 'none';
+  confirmBtn.disabled = true;
+  cancelBtn.disabled = true;
+  confirmBtn.textContent = '⏳ Deleting...';
+  
+  const totalCount = document.getElementById('delete-progress-total');
+  const progressCount = document.getElementById('delete-progress-count');
+  const progressFill = document.getElementById('delete-progress-fill');
+  
+  // Determine which bookmarks to delete
+  const toDelete = selectedCount > 0 
+    ? Array.from(filtered).filter(b => selectedBookmarks.has(b.id))
+    : filtered;
+  
+  totalCount.textContent = toDelete.length;
+  
+  // Delete bookmarks with progress
+  for (let i = 0; i < toDelete.length; i++) {
+    await deleteBookmark(toDelete[i].id);
+    progressCount.textContent = i + 1;
+    const percent = ((i + 1) / toDelete.length) * 100;
+    progressFill.style.width = percent + '%';
+  }
+  
+  // Close modal after completion
+  await new Promise(resolve => setTimeout(resolve, 500));
+  modal.classList.add('hidden');
+  
+  // Reset modal for next use
+  progressEl.style.display = 'none';
+  input.style.display = 'block';
+  confirmBtn.disabled = false;
+  cancelBtn.disabled = false;
+  confirmBtn.textContent = 'Delete';
+  progressFill.style.width = '0%';
+  backdrop.onclick = oldBackdropOnclick;
+  
+  allBookmarks = await getBookmarks();
+  selectedBookmarks.clear();
   closeNodePanel();
   renderAll();
-  showToast('🗑️ Deleted all bookmarks!');
+  updateDeleteButtonState();
+  const count = toDelete.length;
+  showToast('🗑️ Deleted ' + count + ' bookmark' + (count !== 1 ? 's' : ''));
+});
+
+// ── Select All checkbox ────────────────────────────────────────────────────────
+document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
+  const filtered = getFiltered();
+  selectedBookmarks.clear();
+  
+  if (e.target.checked) {
+    filtered.forEach(b => selectedBookmarks.add(b.id));
+  }
+  
+  renderList(filtered);
+  updateDeleteButtonState();
 });
 
 // ── Toast ──────────────────────────────────────────────────────────────────────
